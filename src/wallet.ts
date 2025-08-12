@@ -245,5 +245,9 @@ function wallets_cleanup(wallets: any) {
 			console.warn('Wallet at index ' + i + ' does not have a guid, removing it');
 			wallets[i].guid = 'wallet-' + i + '-' + Date.now();
 		}
+		if (!wallets[i].type) {
+			console.warn('Wallet at index ' + i + ' does not have a type, setting it to software');
+			wallets[i].type = 'software';
+		}
 	}
 }

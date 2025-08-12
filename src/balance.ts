@@ -641,7 +641,7 @@ export function formatBalance(balance: IBalance, roundToDecimals: number = -1, s
 	const decimals = balance.decimals !== undefined && balance.decimals !== null ? balance.decimals : 18;
 	roundToDecimals = roundToDecimals > -1 ? roundToDecimals : decimals;
 	// TODO: Intl.NumberFormat supports maximumFractionDigits only up to 20, so we need to handle larger fraction numbers differently
-	return Intl.NumberFormat(undefined, { minimumFractionDigits: 0, maximumFractionDigits: roundToDecimals }).format(formatedAmount as Intl.StringNumericLiteral) + (showCurrency ? ' ' + balance.currency : '');
+	return Intl.NumberFormat(undefined, { minimumFractionDigits: 0, maximumFractionDigits: roundToDecimals }).format(Number(formatedAmount)) + (showCurrency ? ' ' + balance.currency : '');
 }
 
 // NEW: Batch token balances by contract addresses (not symbols)

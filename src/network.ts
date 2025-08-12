@@ -1,7 +1,7 @@
 import { get, writable, derived } from 'svelte/store';
-import { localStorageSharedStore } from '@/lib/svelte-shared-store.ts';
-import { getGuid } from '@/core/scripts/utils/utils.ts';
-import { module } from '@/org.libersoft.wallet/scripts/module.ts';
+import { localStorageSharedStore } from './svelte-shared-store.ts';
+import { getGuid } from './utils.ts';
+import { defaultNetworks } from './default-networks.ts';
 export const default_networks = writable<INetwork[]>([]);
 export const networks = localStorageSharedStore<INetwork[]>('networks', []);
 export const selectedNetworkID = localStorageSharedStore<string | null>('selectedNetworkID', null);
@@ -103,16 +103,9 @@ networks.subscribe((nets: INetwork[]) => {
 	}
 });
 
-export async function loadDefaultNetworks(): Promise<INetwork[]> {
-	const url = 'modules/' + module.identifier + '/json/networks.json';
-	try {
-		const response = await fetch(url);
-		if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-		const data = await response.json();
-		return data;
-	} catch (error) {
-		return [];
-	}
+export function loadDefaultNetworks(): INetwork[] {
+	default_networks.set(defaultNetworks);
+	return defaultNetworks;
 }
 
 selectedNetworkID.subscribe((value: string | null) => {
@@ -313,21 +306,16 @@ export function initializeDefaultNetworks(): void {
 		return;
 	}
 
-	loadDefaultNetworks()
-		.then(networks => {
-			//console.log('loadDefaultNetworks() resolved with:', networks.length, 'networks');
-			default_networks.set(
-				networks.map(network => ({
-					...network,
-					guid: getGuid(),
-					tokens: network.tokens || [],
-				}))
-			);
-			//console.log('default_networks store updated');
-		})
-		.catch(error => {
-			console.error('loadDefaultNetworks() failed:', error);
-		});
+	const networks = loadDefaultNetworks();
+	//console.log('loadDefaultNetworks() resolved with:', networks.length, 'networks');
+	default_networks.set(
+		networks.map(network => ({
+			...network,
+			guid: getGuid(),
+			tokens: network.tokens || [],
+		}))
+	);
+	//console.log('default_networks store updated');
 }
 
 

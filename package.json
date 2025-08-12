@@ -10,10 +10,20 @@
   "./balance": "./src/balance.ts",
   "./wallet": "./src/wallet.ts",
   "./trezor": "./src/trezor.ts",
-  "./ledger": "./src/ledger.ts"
+  "./ledger": "./src/ledger.ts",
+  "./network": "./src/network.ts",
+  "./provider": "./src/provider.ts",
+  "./transaction": "./src/transaction.ts",
+  "./addressbook": "./src/addressbook.ts",
+  "./trezor-transaction": "./src/trezor-transaction.ts",
+  "./ledger-transaction": "./src/ledger-transaction.ts",
+  "./ledger-integration": "./src/ledger-integration.ts",
+  "./default-networks": "./src/default-networks.ts"
+ },
+ "scripts": {
+  "typecheck": "tsc --noEmit"
  },
  "dependencies": {
-  "svelte": "^4.0.0 || ^5.0.0",
   "ethers": "^6.0.0",
   "@trezor/connect": "^9.0.0",
   "@trezor/connect-web": "^9.0.0",
@@ -21,5 +31,8 @@
   "@ledgerhq/hw-transport-webusb": "^6.0.0",
   "@ledgerhq/hw-app-eth": "^6.0.0",
   "node-localstorage": "^3.0.5"
+ },
+ "devDependencies": {
+  "typescript": "^5.0.0"
  }
 }

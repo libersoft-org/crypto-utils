@@ -12,6 +12,12 @@ export * from './network.ts';
 // Provider functionality
 export * from './provider.ts';
 
+// Transaction functionality
+export * from './transaction.ts';
+
+// Address book functionality
+export * from './addressbook.ts';
+
 // Hardware wallet support
 export * from './trezor.ts';
 export * from './ledger.ts';
