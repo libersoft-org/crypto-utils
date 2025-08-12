@@ -1,6 +1,4 @@
-// Example usage of ledger.ts with existing wallet system
-// Import polyfills first
-import './ledger-polyfills';
+
 import { initializeLedger, connectLedger, getLedgerEthereumAccounts, createLedgerWallet, signEthereumTransaction, signEthereumMessage, ledgerConnected, ledgerWallets, ledgerDevice, ledgerError, type LedgerWallet } from './ledger';
 
 /**

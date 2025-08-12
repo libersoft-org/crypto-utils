@@ -1,21 +1,11 @@
 import { get, writable, derived } from 'svelte/store';
 import type { Device, Success, Unsuccessful } from '@trezor/connect/lib/types';
+import TrezorConnectWeb, { DEVICE_EVENT as DEVICE_EVENT_WEB } from '@trezor/connect-web';
+import TrezorConnectNode, { DEVICE_EVENT as DEVICE_EVENT_NODE } from '@trezor/connect';
 
-// Conditional import at module level
-let TrezorConnect: any;
-let DEVICE_EVENT: any;
-
-if (typeof window !== 'undefined') {
-	// Browser environment - use connect-web
-	const { default: TC, DEVICE_EVENT: DE } = require('@trezor/connect-web');
-	TrezorConnect = TC;
-	DEVICE_EVENT = DE;
-} else {
-	// Node.js environment - use connect
-	const { default: TC, DEVICE_EVENT: DE } = require('@trezor/connect');
-	TrezorConnect = TC;
-	DEVICE_EVENT = DE;
-}
+// Use the appropriate Trezor Connect based on environment
+const TrezorConnect = typeof window !== 'undefined' ? TrezorConnectWeb : TrezorConnectNode;
+const DEVICE_EVENT = typeof window !== 'undefined' ? DEVICE_EVENT_WEB : DEVICE_EVENT_NODE;
 import type { IAddress, IWallet } from './wallet.ts';
 
 export interface TrezorAccount {

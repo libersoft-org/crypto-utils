@@ -1,5 +1,3 @@
-// Import polyfills FIRST before any Ledger libraries
-import './ledger-polyfills';
 
 import { writable, derived, get } from 'svelte/store';
 import type { TransactionRequest } from 'ethers';
