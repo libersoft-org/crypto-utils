@@ -1,6 +1,6 @@
 // Default networks configuration
 
-import type { IDefaultNetwork } from "@/org.libersoft.wallet/scripts/crypto-utils/types.ts";
+import type { IDefaultNetwork } from "./types.ts";
 
 export const defaultNetworks: IDefaultNetwork[] = [
 	{
