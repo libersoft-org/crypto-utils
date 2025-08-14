@@ -3,12 +3,8 @@ import { formatUnits, Contract } from 'ethers';
 import { selectedNetwork, nfts as nftStore, tokens } from './network.ts';
 import { selectedAddress } from './wallet.ts';
 import { provider } from './provider.ts';
+import type { IBalance } from './types.ts';
 
-export interface IBalance {
-	amount: bigint;
-	currency: string;
-	decimals?: number;
-}
 interface MulticallCall {
 	target: string;
 	callData: string;

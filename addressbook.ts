@@ -1,25 +1,11 @@
 import { get } from 'svelte/store';
 import { isAddress } from 'ethers';
-import { localStorageSharedStore } from './svelte-shared-store.ts';
-// TODO: Need to handle getGuid utility - for now using simple implementation
-function getGuid(): string {
-	return 'guid-' + Date.now() + '-' + Math.random().toString(36).substring(2, 15);
-}
+import { localStorageSharedStore } from './utils/svelte-shared-store.ts';
+import type { IAddressBookItem, IAddressBookValidationResult, IAddressBookImportResult } from './types.ts';
+import { getGuid } from './utils/utils.ts';
+
+
 export const addressBook = localStorageSharedStore<IAddressBookItem[]>('addressbook', []);
-export interface IAddressBookItem {
-	guid: string;
-	name: string;
-	address: string;
-}
-export interface IAddressBookValidationResult {
-	isValid: boolean;
-	error?: string;
-}
-export interface IAddressBookImportResult {
-	success: boolean;
-	error?: string;
-	addedCount?: number;
-}
 
 addressBook.subscribe((value: IAddressBookItem[]) => {
 	let modified = false;

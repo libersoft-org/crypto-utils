@@ -1,67 +1,21 @@
 import { get, writable, derived } from 'svelte/store';
-import { localStorageSharedStore } from './svelte-shared-store.ts';
-import { getGuid } from './utils.ts';
+import { localStorageSharedStore } from './utils/svelte-shared-store.ts';
+import { getGuid } from './utils/utils.ts';
 import { defaultNetworks } from './default-networks.ts';
-export const default_networks = writable<INetwork[]>([]);
+import type { INetwork, IToken, ICurrency, IRPCServer, INFT, INFTData, INetworkStatus, IDefaultNetwork } from './types.ts';
+
+export const default_networks = writable<INetwork[]>(
+	defaultNetworks.map(network => ({
+			...network,
+			guid: getGuid(),
+			tokens: network.tokens || [],
+		})));
+
 export const networks = localStorageSharedStore<INetwork[]>('networks', []);
 export const selectedNetworkID = localStorageSharedStore<string | null>('selectedNetworkID', null);
 export const selectedNetwork = writable<INetwork | undefined>();
 export const tokenInfos = writable<Map<string, { name: string; symbol: string } | null>>(new Map());
-export interface INetwork {
-	guid?: string;
-	name: string;
-	chainID: number;
-	explorerURL?: string;
-	currency: ICurrency;
-	rpcURLs?: string[];
-	tokens?: IToken[];
-	nfts?: INFT[];
-	selectedRpcUrl?: string;
-	testnet?: boolean;
-}
-export interface ICurrency {
-	name?: string;
-	symbol?: string;
-	contract_address?: string;
-	iconURL?: string;
-}
-export interface IRPCServer {
-	url: string;
-	latency: number | null;
-	lastBlock: number | null;
-	blockAge: number | null;
-	isAlive: boolean;
-	checking?: boolean;
-}
-export interface ITokenData {
-	contract_address: string;
-	iconURL?: string;
-}
-export interface IToken {
-	guid: string;
-	item: ITokenData;
-}
-export interface INFTData {
-	contract_address: string;
-	token_id: string;
-	name?: string;
-	description?: string;
-	image?: string;
-	animation_url?: string;
-	external_url?: string;
-	attributes?: Array<{
-		trait_type: string;
-		value: string | number;
-	}>;
-}
-export interface INFT {
-	guid: string;
-	item: INFTData;
-}
-export interface IStatus {
-	color: 'red' | 'orange' | 'green';
-	text: string;
-}
+
 
 networks.subscribe((nets: INetwork[]) => {
 	let modified = false;
@@ -102,11 +56,6 @@ networks.subscribe((nets: INetwork[]) => {
 		}, 100);
 	}
 });
-
-export function loadDefaultNetworks(): INetwork[] {
-	default_networks.set(defaultNetworks);
-	return defaultNetworks;
-}
 
 selectedNetworkID.subscribe((value: string | null) => {
 	updateSelectedNetwork(value, get(networks));
@@ -297,25 +246,6 @@ export function getSelectedRpcUrl(network: INetwork): string | undefined {
 	if (network.selectedRpcUrl) return network.selectedRpcUrl;
 	// Otherwise return the first available RPC URL
 	return network.rpcURLs?.[0];
-}
-
-export function initializeDefaultNetworks(): void {
-	//console.log('initializeDefaultNetworks() called');
-	if (get(default_networks).length > 0) {
-		//console.log('Default networks already loaded');
-		return;
-	}
-
-	const networks = loadDefaultNetworks();
-	//console.log('loadDefaultNetworks() resolved with:', networks.length, 'networks');
-	default_networks.set(
-		networks.map(network => ({
-			...network,
-			guid: getGuid(),
-			tokens: network.tokens || [],
-		}))
-	);
-	//console.log('default_networks store updated');
 }
 
 

@@ -1,4 +1,3 @@
-
 import { writable, derived, get } from 'svelte/store';
 import type { TransactionRequest } from 'ethers';
 import { Transaction } from 'ethers';
@@ -6,6 +5,7 @@ import TransportWebHID from '@ledgerhq/hw-transport-webhid';
 import TransportWebUSB from '@ledgerhq/hw-transport-webusb';
 import EthApp from '@ledgerhq/hw-app-eth';
 import { ledgerService } from '@ledgerhq/hw-app-eth';
+
 interface LedgerDevice {
 	id: string;
 	name: string;

@@ -1,7 +1,7 @@
 import { get } from 'svelte/store';
 import { Contract } from 'ethers';
 import TrezorConnect from '@trezor/connect-web';
-import type { IAddress, IWallet } from './wallet.ts';
+import type { IAddress, IWallet } from './types.ts';
 // ensureTrezorState should be called by UI component before calling sendTransactionTrezor
 import { provider } from './provider.ts';
 import { selectedNetwork } from './network.ts';

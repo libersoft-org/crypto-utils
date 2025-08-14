@@ -6,26 +6,7 @@ import { selectedNetwork } from './network.ts';
 import { selectedWallet, selectedAddress } from './wallet.ts';
 import { sendTransactionTrezor } from './trezor-transaction.ts';
 import { sendTransactionLedger } from './ledger-transaction.ts';
-
-export interface IPayment {
-	address: string;
-	amount: bigint;
-	fee: bigint;
-	symbol: string | null | undefined;
-	contractAddress?: string; // For tokens - undefined for native currency
-}
-
-export interface FeeEstimate {
-	low: string;
-	average: string;
-	high: string;
-}
-
-export interface TransactionTimeEstimate {
-	low: string;
-	average: string;
-	high: string;
-}
+import type { FeeEstimate, TransactionTimeEstimate } from './types.ts';
 
 let estimatedFee: FeeEstimate = {
 	low: '0',
