@@ -1,6 +1,6 @@
 import { get } from 'svelte/store';
 import { Contract, Transaction } from 'ethers';
-import type { IAddress, IWallet } from './wallet.ts';
+import type { IAddress, IWallet } from './types.ts';
 import { provider } from './provider.ts';
 import { selectedNetwork } from './network.ts';
 import { signEthereumTransaction } from './ledger.ts';

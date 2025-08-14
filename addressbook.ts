@@ -4,6 +4,9 @@ import { localStorageSharedStore } from './utils/svelte-shared-store.ts';
 import type { IAddressBookItem, IAddressBookValidationResult, IAddressBookImportResult } from './types.ts';
 import { getGuid } from './utils/utils.ts';
 
+// Re-export types for backward compatibility
+export type { IAddressBookItem, IAddressBookValidationResult, IAddressBookImportResult } from './types.ts';
+
 
 export const addressBook = localStorageSharedStore<IAddressBookItem[]>('addressbook', []);
 

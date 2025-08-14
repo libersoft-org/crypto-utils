@@ -6,7 +6,10 @@ import { selectedNetwork } from './network.ts';
 import { selectedWallet, selectedAddress } from './wallet.ts';
 import { sendTransactionTrezor } from './trezor-transaction.ts';
 import { sendTransactionLedger } from './ledger-transaction.ts';
-import type { FeeEstimate, TransactionTimeEstimate } from './types.ts';
+import type { FeeEstimate, TransactionTimeEstimate, IPayment } from './types.ts';
+
+// Re-export types for backward compatibility
+export type { IPayment } from './types.ts';
 
 let estimatedFee: FeeEstimate = {
 	low: '0',

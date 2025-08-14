@@ -5,6 +5,9 @@ import { selectedAddress } from './wallet.ts';
 import { provider } from './provider.ts';
 import type { IBalance } from './types.ts';
 
+// Re-export types for backward compatibility
+export type { IBalance } from './types.ts';
+
 interface MulticallCall {
 	target: string;
 	callData: string;

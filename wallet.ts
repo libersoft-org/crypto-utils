@@ -5,6 +5,9 @@ import { doAddHardwareAddressTrezor } from './trezor.ts';
 import { doAddHardwareAddressLedger } from './ledger.ts';
 import type { IWallet, IAddress } from './types.ts';
 
+// Re-export types for backward compatibility
+export type { IWallet, IAddress } from './types.ts';
+
 export const wallets = localStorageSharedStore<IWallet[]>('wallets', []);
 export const selectedWalletID = localStorageSharedStore<string | null>('selectedWalletID', null);
 export const selectedWallet = derived([wallets, selectedWalletID], ([$wallets, $selectedWalletID]) => {

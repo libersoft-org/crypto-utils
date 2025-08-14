@@ -4,6 +4,9 @@ import { getGuid } from './utils/utils.ts';
 import { defaultNetworks } from './default-networks.ts';
 import type { INetwork, IToken, ICurrency, IRPCServer, INFT, INFTData, INetworkStatus, IDefaultNetwork } from './types.ts';
 
+// Re-export types for backward compatibility
+export type { INetwork, IToken, ICurrency, IRPCServer, INFT, INFTData, INetworkStatus, IDefaultNetwork } from './types.ts';
+
 export const default_networks = writable<INetwork[]>(
 	defaultNetworks.map(network => ({
 			...network,
