@@ -225,15 +225,22 @@ wallets.subscribe(wallets => {
 	wallets_cleanup(wallets);
 });
 
-function wallets_cleanup(wallets: any) {
-	for (let i = 0; i < wallets.length; i++) {
-		if (!wallets[i].guid) {
-			console.warn('Wallet at index ' + i + ' does not have a guid, removing it');
-			wallets[i].guid = 'wallet-' + i + '-' + Date.now();
+function wallets_cleanup(w: any) {
+	let changed = false;
+	for (let i = 0; i < w.length; i++) {
+		if (!w[i].guid) {
+			console.log('Wallet at index ' + i + ' does not have a guid, adding it');
+			w[i].guid = 'wallet-' + i + '-' + Date.now();
+			changed = true;
 		}
-		if (!wallets[i].type) {
-			console.warn('Wallet at index ' + i + ' does not have a type, setting it to software');
-			wallets[i].type = 'software';
+		if (!w[i].type) {
+			console.log('Wallet at index ' + i + ' does not have a type, setting it to software');
+			w[i].type = 'software';
+			changed = true;
 		}
+	}
+	if (changed) {
+		wallets.update(ws => ws);
+		console.log('Wallets cleanup: updated wallets with missing guid or type');
 	}
 }
