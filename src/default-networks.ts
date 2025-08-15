@@ -1,6 +1,6 @@
 // Default networks configuration
 
-import type { IDefaultNetwork } from "./types.ts";
+import type { IDefaultNetwork } from "./types";
 
 export const defaultNetworks: IDefaultNetwork[] = [
 	{

@@ -1,9 +1,9 @@
 import { get } from 'svelte/store';
 import { Contract, Transaction } from 'ethers';
-import type { IAddress, IWallet } from './types.ts';
-import { provider } from './provider.ts';
-import { selectedNetwork } from './network.ts';
-import { signEthereumTransaction } from './ledger.ts';
+import type { IAddress, IWallet } from './types';
+import { provider } from './provider';
+import { selectedNetwork } from './network';
+import { signEthereumTransaction } from './ledger';
 // ensureLedgerState should be called by UI component before calling sendTransactionLedger
 
 export async function sendTransactionLedger(wallet: IWallet, srcAddress: IAddress, dstAddress: string, amount: bigint, fee: bigint, contractAddress?: string): Promise<void> {

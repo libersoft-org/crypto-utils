@@ -1,8 +1,8 @@
 import { get, writable, type Writable } from 'svelte/store';
 import { JsonRpcProvider, WebSocketProvider } from 'ethers';
-import { selectedNetwork, getSelectedRpcUrl, setSelectedRpcUrl } from './network.ts';
-import { derivedWithEquals } from './utils/derivedWithEquals.ts';
-import type { INetworkStatus } from './types.ts';
+import { selectedNetwork, getSelectedRpcUrl, setSelectedRpcUrl } from './network';
+import { derivedWithEquals } from './utils/derivedWithEquals';
+import type { INetworkStatus } from './types';
 
 
 export const status = writable<INetworkStatus>({ color: 'red', text: 'No connection' });

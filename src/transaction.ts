@@ -1,15 +1,15 @@
 import { get } from 'svelte/store';
 import { writable } from 'svelte/store';
 import { Mnemonic, HDNodeWallet, parseUnits, formatUnits, Contract, type PreparedTransactionRequest, type TransactionReceipt } from 'ethers';
-import { ensureProviderConnected, provider, reconnect, status } from './provider.ts';
-import { selectedNetwork } from './network.ts';
-import { selectedWallet, selectedAddress } from './wallet.ts';
-import { sendTransactionTrezor } from './trezor-transaction.ts';
-import { sendTransactionLedger } from './ledger-transaction.ts';
-import type { FeeEstimate, TransactionTimeEstimate, IPayment } from './types.ts';
+import { ensureProviderConnected, provider, reconnect, status } from './provider';
+import { selectedNetwork } from './network';
+import { selectedWallet, selectedAddress } from './wallet';
+import { sendTransactionTrezor } from './trezor-transaction';
+import { sendTransactionLedger } from './ledger-transaction';
+import type { FeeEstimate, TransactionTimeEstimate, IPayment } from './types';
 
 // Re-export types for backward compatibility
-export type { IPayment } from './types.ts';
+export type { IPayment } from './types';
 
 let estimatedFee: FeeEstimate = {
 	low: '0',

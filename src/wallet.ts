@@ -1,12 +1,12 @@
 import { get, writable, derived } from 'svelte/store';
-import { localStorageSharedStore } from './utils/svelte-shared-store.ts';
+import { localStorageSharedStore } from './utils/svelte-shared-store';
 import { getIndexedAccountPath, HDNodeWallet, Mnemonic, randomBytes } from 'ethers';
-import { doAddHardwareAddressTrezor } from './trezor.ts';
-import { doAddHardwareAddressLedger } from './ledger.ts';
-import type { IWallet, IAddress } from './types.ts';
+import { doAddHardwareAddressTrezor } from './trezor';
+import { doAddHardwareAddressLedger } from './ledger';
+import type { IWallet, IAddress } from './types';
 
 // Re-export types for backward compatibility
-export type { IWallet, IAddress } from './types.ts';
+export type { IWallet, IAddress } from './types';
 
 export const wallets = localStorageSharedStore<IWallet[]>('wallets', []);
 export const selectedWalletID = localStorageSharedStore<string | null>('selectedWalletID', null);

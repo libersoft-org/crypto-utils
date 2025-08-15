@@ -1,11 +1,11 @@
 import { get } from 'svelte/store';
 import { Contract } from 'ethers';
 import TrezorConnect from '@trezor/connect-web';
-import type { IAddress, IWallet } from './types.ts';
+import type { IAddress, IWallet } from './types';
 // ensureTrezorState should be called by UI component before calling sendTransactionTrezor
-import { provider } from './provider.ts';
-import { selectedNetwork } from './network.ts';
-import { withTrezorState, withTimeout } from './trezor.ts';
+import { provider } from './provider';
+import { selectedNetwork } from './network';
+import { withTrezorState, withTimeout } from './trezor';
 
 export async function sendTransactionTrezor(wallet: IWallet, srcAddress: IAddress, dstAddress: string, amount: bigint, fee: bigint, contractAddress?: string): Promise<void> {
 	// Validate inputs

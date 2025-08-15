@@ -1,11 +1,11 @@
 import { get } from 'svelte/store';
 import { isAddress } from 'ethers';
-import { localStorageSharedStore } from './utils/svelte-shared-store.ts';
-import type { IAddressBookItem, IAddressBookValidationResult, IAddressBookImportResult } from './types.ts';
-import { getGuid } from './utils/utils.ts';
+import { localStorageSharedStore } from './utils/svelte-shared-store';
+import type { IAddressBookItem, IAddressBookValidationResult, IAddressBookImportResult } from './types';
+import { getGuid } from './utils/utils';
 
 // Re-export types for backward compatibility
-export type { IAddressBookItem, IAddressBookValidationResult, IAddressBookImportResult } from './types.ts';
+export type { IAddressBookItem, IAddressBookValidationResult, IAddressBookImportResult } from './types';
 
 
 export const addressBook = localStorageSharedStore<IAddressBookItem[]>('addressbook', []);

@@ -1,12 +1,12 @@
 import { get } from 'svelte/store';
 import { formatUnits, Contract } from 'ethers';
-import { selectedNetwork, nfts as nftStore, tokens } from './network.ts';
-import { selectedAddress } from './wallet.ts';
-import { provider } from './provider.ts';
-import type { IBalance } from './types.ts';
+import { selectedNetwork, nfts as nftStore, tokens } from './network';
+import { selectedAddress } from './wallet';
+import { provider } from './provider';
+import type { IBalance } from './types';
 
 // Re-export types for backward compatibility
-export type { IBalance } from './types.ts';
+export type { IBalance } from './types';
 
 interface MulticallCall {
 	target: string;

@@ -6,7 +6,7 @@ import TrezorConnectNode, { DEVICE_EVENT as DEVICE_EVENT_NODE } from '@trezor/co
 // Use the appropriate Trezor Connect based on environment
 const TrezorConnect = typeof window !== 'undefined' ? TrezorConnectWeb : TrezorConnectNode;
 const DEVICE_EVENT = typeof window !== 'undefined' ? DEVICE_EVENT_WEB : DEVICE_EVENT_NODE;
-import type { IAddress, IWallet } from './types.ts';
+import type { IAddress, IWallet } from './types';
 
 export interface TrezorAccount {
 	address: string;
