@@ -26,9 +26,9 @@ export function findAddressBookItemByAddress(address: string): IAddressBookItem 
 	return ab.find(i => i.address === address);
 }
 
-export function findAddressBookItemByID(id: string): IAddressBookItem | undefined {
+export function findAddressBookItemByID(guid: string): IAddressBookItem | undefined {
 	const ab = get(addressBook);
-	return ab.find(i => i.guid === id);
+	return ab.find(i => i.guid === guid);
 }
 
 export function validateAddressBookItem(name: string | undefined, address: string | undefined, excludeItemGuid?: string): IAddressBookValidationResult {
