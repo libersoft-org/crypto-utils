@@ -53,11 +53,7 @@ export const ledgerDeviceId = derived([ledgerDevice], ([$ledgerDevice]) => {
 	return $ledgerDevice?.id;
 });
 
-// Helper function to check if a wallet matches the current device
-export const isLedgerWalletActive = (wallet?: any): boolean => {
-	const $ledgerDeviceId = get(ledgerDeviceId);
-	return !!$ledgerDeviceId && $ledgerDeviceId === wallet?.identifiers?.deviceId;
-};
+
 let currentTransport: any = null;
 
 /**
@@ -172,7 +168,7 @@ export async function initializeLedger(): Promise<boolean> {
 		console.log('Ledger stores initialized successfully - ready for user interaction');
 		return true;
 	} catch (error) {
-		console.error('Failed to initialize Ledger stores - caught exception:', error);
+		console.error('Failed to initialize Ledger - caught exception:', error);
 		const errorMessage = error instanceof Error ? error.message : 'Failed to initialize Ledger';
 		console.error('Error details:', errorMessage);
 		ledgerError.set(errorMessage);
@@ -184,7 +180,8 @@ export async function initializeLedger(): Promise<boolean> {
  * Connect to Ledger device - must be called from user interaction
  */
 export async function connectLedger(): Promise<boolean> {
-	//return new Promise<boolean>(async (resolve, reject) => {
+
+	await initializeLedger();
 
 	try {
 		ledgerLoading.set(true);
@@ -208,7 +205,7 @@ export async function connectLedger(): Promise<boolean> {
 		} catch (error) {
 
             throw lastError; // disable fallback for now.
-
+			/*
 			console.warn(`${connectionMethod} connection failed, trying fallback:`, error);
 			lastError = error instanceof Error ? error : new Error(`${connectionMethod} connection failed`);
 
@@ -232,7 +229,7 @@ export async function connectLedger(): Promise<boolean> {
 				}
 			} else {
 				throw lastError; // Fallback not supported, throw original error
-			}
+			}*/
 		}
 
 		// Test connection by getting app configuration
@@ -389,40 +386,6 @@ export async function getLedgerEthereumAccounts(startIndex: number = 0, count: n
 }
 
 /**
- * Create Ledger wallet from account
- */
-export async function createLedgerWallet(account: LedgerAccount, name?: string): Promise<LedgerWallet | null> {
-	let currentDevice: LedgerDevice | null = null;
-	const unsubscribe = ledgerDevice.subscribe(d => (currentDevice = d));
-	unsubscribe();
-	if (!currentDevice) {
-		ledgerError.set('No Ledger device connected');
-		return null;
-	}
-	const wallet: LedgerWallet = {
-		type: 'ledger',
-		name: name || account.name || `Ledger Wallet`,
-		address: account.address,
-		path: account.path,
-		publicKey: account.publicKey,
-		deviceId: (currentDevice as LedgerDevice).id,
-	};
-	// Add to ledger wallets store
-	ledgerWallets.update(wallets => [...wallets, wallet]);
-	return wallet;
-}
-/**
- * Get all Ledger wallets
- */
-export function getLedgerWallets(): LedgerWallet[] {
-	let wallets: LedgerWallet[] = [];
-	const unsubscribe = ledgerWallets.subscribe(w => {
-		wallets = w;
-	});
-	unsubscribe();
-	return wallets;
-}
-/**
  * Sign Ethereum transaction with Ledger (compatible with Ethers.js)
  */
 export async function signEthereumTransaction(path: string, transaction: TransactionRequest): Promise<LedgerResponse<{ r: string; s: string; v: number }>> {
@@ -525,33 +488,6 @@ export async function signEthereumTransaction(path: string, transaction: Transac
 	}
 }
 
-/**
- * Sign Ethereum message with Ledger
- */
-export async function signEthereumMessage(path: string, address: string, message: string): Promise<LedgerResponse<{ address: string; signature: string }>> {
-	if (!currentTransport) return { success: false, payload: null as any, error: 'Ledger not connected' };
-	try {
-		ledgerLoading.set(true);
-		ledgerError.set(null);
-		const eth = new EthApp(currentTransport);
-		// Sign message with Ledger
-		const result = await eth.signPersonalMessage(path, Array.from(new TextEncoder().encode(message), byte => byte.toString(16).padStart(2, '0')).join(''));
-		return {
-			success: true,
-			payload: {
-				address: address,
-				signature: '0x' + result.r + result.s + result.v.toString(16).padStart(2, '0'),
-			},
-		};
-	} catch (error) {
-		console.error('Error signing Ethereum message:', error);
-		const errorMessage = error instanceof Error ? error.message : 'Failed to sign message';
-		ledgerError.set(errorMessage);
-		return { success: false, payload: null as any, error: errorMessage };
-	} finally {
-		ledgerLoading.set(false);
-	}
-}
 
 /**
  * Get public key from Ledger for Ethereum
@@ -580,67 +516,6 @@ export async function getLedgerEthereumPublicKey(path: string): Promise<LedgerRe
 	}
 }
 
-/**
- * Disconnect from Ledger
- */
-export async function disconnectLedger(): Promise<void> {
-	if (currentTransport) {
-		await currentTransport.close();
-		currentTransport = null;
-	}
-	ledgerConnected.set(false);
-	ledgerDevice.set(null);
-	ledgerAccounts.set([]);
-	ledgerWallets.set([]);
-	ledgerError.set(null);
-}
-
-/**
- * Verify that a wallet belongs to the connected Ledger device
- */
-export async function verifyLedgerWallet(wallet: LedgerWallet): Promise<boolean> {
-	let currentDevice: LedgerDevice | null = null;
-	const unsubscribe = ledgerDevice.subscribe(d => (currentDevice = d));
-	unsubscribe();
-	if (!currentDevice || (currentDevice as LedgerDevice).id !== wallet.deviceId) return false;
-	// Verify by getting the address from the device
-	const result = await getLedgerEthereumPublicKey(wallet.path);
-	if (result.success) return result.payload.address.toLowerCase() === wallet.address.toLowerCase();
-	return false;
-}
-
-/**
- * Remove a Ledger wallet from the store
- */
-export function removeLedgerWallet(address: string): void {
-	ledgerWallets.update(wallets => wallets.filter(wallet => wallet.address.toLowerCase() !== address.toLowerCase()));
-}
-
-/**
- * Get device info
- */
-export async function getLedgerDeviceInfo(): Promise<LedgerResponse<any>> {
-	if (!currentTransport) return { success: false, payload: null, error: 'Ledger not connected' };
-	try {
-		ledgerLoading.set(true);
-		ledgerError.set(null);
-		const eth = new EthApp(currentTransport);
-		const config = await eth.getAppConfiguration();
-		return {
-			success: true,
-			payload: config,
-		};
-	} catch (error) {
-		console.error('Error getting device info:', error);
-		const errorMessage = error instanceof Error ? error.message : 'Failed to get device info';
-		ledgerError.set(errorMessage);
-		return { success: false, payload: null, error: errorMessage };
-	} finally {
-		ledgerLoading.set(false);
-	}
-}
-
-// Note: serializeTransaction function removed - now using ethers' Transaction.unsignedSerialized instead
 
 /**
  * Get device identifiers for wallet creation (similar to Trezor's staticSessionId)

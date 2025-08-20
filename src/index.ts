@@ -21,3 +21,5 @@ export * from './addressbook';
 // Hardware wallet support
 export * from './trezor';
 export * from './ledger';
+
+export * from './types';
