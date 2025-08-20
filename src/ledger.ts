@@ -137,7 +137,7 @@ export function checkConnectionMethodSupport(method: 'WebHID' | 'WebUSB'): { sup
 export async function initializeLedger(): Promise<boolean> {
 	console.log('Starting Ledger initialization...');
 	try {
-		// Check if at least one connection method is supported
+
 		console.log('Checking WebHID support...');
 		const webHIDSupport = checkWebHIDSupport();
 		console.log('WebHID support result:', webHIDSupport);
@@ -146,7 +146,7 @@ export async function initializeLedger(): Promise<boolean> {
 		const webUSBSupport = checkWebUSBSupport();
 		console.log('WebUSB support result:', webUSBSupport);
 
-		if (!webHIDSupport.supported && !webUSBSupport.supported) {
+		if (!webHIDSupport.supported && !webUSBSupport?.supported) {
 			const errorMsg = 'Neither WebHID nor WebUSB is supported in this browser. Please use Chrome/Edge 89+ or another compatible browser.';
 			console.error('Ledger initialization failed:', errorMsg);
 			ledgerError.set(errorMsg);
@@ -191,9 +191,7 @@ export async function connectLedger(): Promise<boolean> {
 		ledgerError.set(null);
 
 		// Get current connection method (already set during initialization)
-		let connectionMethod: 'WebHID' | 'WebUSB' = 'WebHID';
-		const unsubscribe = ledgerConnectionMethod.subscribe(method => (connectionMethod = method));
-		unsubscribe();
+		let connectionMethod: 'WebHID' | 'WebUSB' = get(ledgerConnectionMethod);
 
 		// Close existing transport
 		if (currentTransport) await currentTransport.close();
@@ -208,6 +206,9 @@ export async function connectLedger(): Promise<boolean> {
 				currentTransport = await TransportWebUSB.create();
 			}
 		} catch (error) {
+
+            throw lastError; // disable fallback for now.
+
 			console.warn(`${connectionMethod} connection failed, trying fallback:`, error);
 			lastError = error instanceof Error ? error : new Error(`${connectionMethod} connection failed`);
 

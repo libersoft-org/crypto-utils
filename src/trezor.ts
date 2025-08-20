@@ -22,6 +22,19 @@ export const trezorError = writable<string | null>(null);
 export const isInitialized = writable<boolean>(false);
 export const trezorDevices = writable<Map<string, Device>>(new Map());
 
+
+export const trezorDevice = derived([trezorState, trezorDevices], ([$trezorState, $trezorDevices]) => {
+	if (!$trezorState || !$trezorState.device) {
+		return null;
+	}
+	const deviceId = $trezorState.device.state.staticSessionId.split(':')[0].split('@')[1];
+	const device = $trezorDevices.get(deviceId);
+	if (!device) {
+		return null;
+	}
+	return device.name;
+});
+
 export const staticSessionId = derived([trezorState], ([$trezorState]) => {
 	return $trezorState?.device?.state?.staticSessionId;
 });
@@ -257,5 +270,11 @@ export async function selectWallet() {
 	await connectTrezor();
 	const deviceStateResult = await withTimeout(TrezorConnect.getDeviceState());
 	console.log('DEVICESTATERESULT:', deviceStateResult);
-	trezorState.set(deviceStateResult);
+	if (deviceStateResult.success) {
+		trezorState.set(deviceStateResult);
+	}
+	else {
+		console.log('getDeviceState returned error:', deviceStateResult);
+		trezorError.set(deviceStateResult.payload.error);
+	}
 }
