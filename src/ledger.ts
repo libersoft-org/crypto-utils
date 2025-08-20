@@ -158,14 +158,12 @@ export async function initializeLedger(): Promise<boolean> {
 			ledgerConnectionMethod.set('WebUSB');
 		}
 
-		// Just initialize the stores - actual device connection happens on user interaction
-		console.log('Initializing Ledger stores...');
 		ledgerConnected.set(false);
 		ledgerDevice.set(null);
 		ledgerAccounts.set([]);
 		ledgerWallets.set([]);
 		ledgerError.set(null);
-		console.log('Ledger stores initialized successfully - ready for user interaction');
+		console.log('Ledger stores initialized successfully');
 		return true;
 	} catch (error) {
 		console.error('Failed to initialize Ledger - caught exception:', error);
@@ -190,18 +188,20 @@ export async function connectLedger(): Promise<boolean> {
 		// Get current connection method (already set during initialization)
 		let connectionMethod: 'WebHID' | 'WebUSB' = get(ledgerConnectionMethod);
 
-		// Close existing transport
+		console.log('close current transport:','currentTransport',currentTransport);
 		if (currentTransport) await currentTransport.close();
 
 		let lastError: Error | null = null;
 
 		// Try the selected connection method first
 		try {
+			console.log('Trying connection method:', connectionMethod);
 			if (connectionMethod === 'WebHID') {
 				currentTransport = await TransportWebHID.create();
 			} else {
 				currentTransport = await TransportWebUSB.create();
 			}
+			console.log(`Connection method ${connectionMethod} successful`);
 		} catch (error) {
 
             throw lastError; // disable fallback for now.
@@ -234,6 +234,7 @@ export async function connectLedger(): Promise<boolean> {
 
 		// Test connection by getting app configuration
 		const eth = new EthApp(currentTransport);
+		console.log('Getting app configuration...');
 		const config = await eth.getAppConfiguration();
 		console.log('Ledger app configuration:', config);
 
