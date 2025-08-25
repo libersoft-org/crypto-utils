@@ -7,6 +7,7 @@ import { selectedWallet, selectedAddress } from './wallet';
 import { sendTransactionTrezor } from './trezor-transaction';
 import { sendTransactionLedger } from './ledger-transaction';
 import type { FeeEstimate, TransactionTimeEstimate, IPayment } from './types';
+import type {TransactionResponse} from "ethers";
 
 // Re-export types for backward compatibility
 export type { IPayment } from './types';
@@ -371,7 +372,7 @@ function formatTransactionTime(seconds: number): string {
 	}
 }
 
-export async function sendTransaction(address: string, etherValue: bigint, etherValueFee: bigint, contractAddress?: string): Promise<void> {
+export async function sendTransaction(address: string, etherValue: bigint, etherValueFee: bigint, contractAddress?: string): Promise<string | null> {
 	const selectedWalletValue = get(selectedWallet);
 	const selectedAddressValue = get(selectedAddress);
 	console.log('sendTransaction debug - selectedWalletValue:', selectedWalletValue);
@@ -380,45 +381,23 @@ export async function sendTransaction(address: string, etherValue: bigint, ether
 	console.log('sendTransaction debug - wallet has phrase:', !!selectedWalletValue?.phrase);
 	if (!selectedWalletValue || !selectedAddressValue) {
 		console.error('No selected wallet or address');
-		return;
+		return null;
 	}
 
 	console.log('selectedWalletValue.type:', selectedWalletValue.type);
 	if (selectedWalletValue.type === 'software') {
-		await sendTransactionSw(selectedWalletValue, selectedAddressValue, address, etherValue, etherValueFee, contractAddress);
+		return (await sendTransactionSw(selectedWalletValue, selectedAddressValue, address, etherValue, etherValueFee, contractAddress)).hash;
 	} else if (selectedWalletValue.type === 'trezor') {
-		await sendTransactionTrezor(selectedWalletValue, selectedAddressValue, address, etherValue, etherValueFee, contractAddress);
+		return (await sendTransactionTrezor(selectedWalletValue, selectedAddressValue, address, etherValue, etherValueFee, contractAddress)).hash;
 	} else if (selectedWalletValue.type === 'ledger') {
-		await sendTransactionLedger(selectedWalletValue, selectedAddressValue, address, etherValue, etherValueFee, contractAddress);
+		return (await sendTransactionLedger(selectedWalletValue, selectedAddressValue, address, etherValue, etherValueFee, contractAddress)).hash;
 	} else {
 		console.error('Unknown wallet type:', selectedWalletValue.type);
 		throw new Error('Invalid wallet configuration');
 	}
-
-	/*
-	let log = {
-		dir: 'sent',
-		date: new Date(),
-		from: request.from,
-		to: request.to,
-		hash: tx.hash,
-		chainID: tx.chainId.toString(),
-		nonce: tx.nonce,
-		tx_type: tx.type,
-		estimatedGas: formatEther(eg),
-		gasLimit: formatEther(tx.gasLimit),
-		gasPrice: formatEther(tx.gasPrice),
-		value: formatEther(tx.value),
-	};
-	console.log('log:', log);
-	console.log('log:', JSON.stringify(log));
-	if (!selectedWalletValue.log) selectedWalletValue.log = [];
-	selectedWalletValue.log.push(log);
-	wallets.update(w => w);
-	*/
 }
 
-async function sendTransactionSw(selectedWalletValue: any, selectedAddressValue: any, address: string, etherValue: bigint, etherValueFee: bigint, contractAddress?: string) {
+async function sendTransactionSw(selectedWalletValue: any, selectedAddressValue: any, address: string, etherValue: bigint, etherValueFee: bigint, contractAddress?: string): Promise<TransactionResponse> {
 	// Check provider connection and attempt to reconnect if needed
 	let providerInstance = await ensureProviderConnected();
 	if (!providerInstance) {
@@ -512,22 +491,7 @@ async function sendTransactionSw(selectedWalletValue: any, selectedAddressValue:
 	console.log('hd_wallet.sendTransaction:');
 	let tx = await hd_wallet.sendTransaction(request);
 	console.log('Transaction sent, hash:', tx.hash);
-	console.log('Waiting for confirmation...');
-	try {
-		// Wait for transaction confirmation with timeout
-		const receipt = await Promise.race([
-			tx.wait() as Promise<TransactionReceipt>,
-			new Promise<never>(
-				(_, reject) => setTimeout(() => reject(new Error('Transaction confirmation timeout')), 60000) // 60 second timeout
-			),
-		]);
-		console.log('Transaction confirmed:', receipt);
-		console.log('Transaction sent OK');
-	} catch (waitError) {
-		console.warn('Transaction confirmation error or timeout:', waitError);
-		console.log('Transaction was sent (hash: ' + tx.hash + ') but confirmation failed or timed out');
-		// Don't throw error - transaction was sent successfully
-	}
+	return tx;
 }
 
 function interpolateTransactionTime(timeA: string, timeB: string, ratio: number): string {

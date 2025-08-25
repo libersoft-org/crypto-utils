@@ -4,9 +4,10 @@ import type { IAddress, IWallet } from './types';
 import { provider } from './provider';
 import { selectedNetwork } from './network';
 import { signEthereumTransaction } from './ledger';
+import type {TransactionResponse} from "ethers";
 // ensureLedgerState should be called by UI component before calling sendTransactionLedger
 
-export async function sendTransactionLedger(wallet: IWallet, srcAddress: IAddress, dstAddress: string, amount: bigint, fee: bigint, contractAddress?: string): Promise<void> {
+export async function sendTransactionLedger(wallet: IWallet, srcAddress: IAddress, dstAddress: string, amount: bigint, fee: bigint, contractAddress?: string):Promise<TransactionResponse> {
 	// Validate inputs
 	if (!wallet || !srcAddress || !dstAddress || amount <= 0n) {
 		throw new Error('Invalid transaction parameters');
@@ -128,16 +129,7 @@ export async function sendTransactionLedger(wallet: IWallet, srcAddress: IAddres
 	try {
 		const txResponse = await providerInstance.broadcastTransaction(serializedTx);
 		console.log('Transaction broadcast successful:', txResponse.hash);
-
-		// Wait for confirmation with timeout
-		try {
-			const receipt = await Promise.race([txResponse.wait(), new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Transaction confirmation timeout')), 60000))]);
-			console.log('Transaction confirmed:', receipt);
-		} catch (waitError) {
-			console.warn('Transaction confirmation timeout:', waitError);
-			console.log('Transaction was sent (hash: ' + txResponse.hash + ') but confirmation timed out');
-			// Don't throw - transaction was sent successfully
-		}
+		return txResponse;
 	} catch (broadcastError) {
 		console.error('Failed to broadcast transaction:', broadcastError);
 		throw new Error(`Failed to broadcast transaction: ${broadcastError instanceof Error ? broadcastError.message : 'Unknown error'}`);

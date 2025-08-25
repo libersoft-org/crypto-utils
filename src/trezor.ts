@@ -97,7 +97,7 @@ export async function connectTrezor(): Promise<boolean> {
 }
 
 export async function initializeTrezor(): Promise<void> {
-	//console.log('Starting Trezor initialization...');
+	console.log('Starting Trezor initialization...');
 
 	// If already initialized, return immediately
 	if (get(isInitialized)) {

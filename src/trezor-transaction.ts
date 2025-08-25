@@ -6,8 +6,9 @@ import type { IAddress, IWallet } from './types';
 import { provider } from './provider';
 import { selectedNetwork } from './network';
 import { withTrezorState, withTimeout } from './trezor';
+import type {TransactionResponse} from "ethers";
 
-export async function sendTransactionTrezor(wallet: IWallet, srcAddress: IAddress, dstAddress: string, amount: bigint, fee: bigint, contractAddress?: string): Promise<void> {
+export async function sendTransactionTrezor(wallet: IWallet, srcAddress: IAddress, dstAddress: string, amount: bigint, fee: bigint, contractAddress?: string): Promise<TransactionResponse> {
 	// Validate inputs
 	if (!wallet || !srcAddress || !dstAddress || amount <= 0n) {
 		throw new Error('Invalid transaction parameters');
@@ -16,7 +17,7 @@ export async function sendTransactionTrezor(wallet: IWallet, srcAddress: IAddres
 	// Ensure Trezor state is available
 	// ensureTrezorState should be called by UI component before this function
 
-	return await withTrezorState(async () => {
+	return await withTrezorState(async (): Promise<TransactionResponse> => {
 		// Get provider for nonce and gas estimation
 		const providerInstance = get(provider);
 		if (!providerInstance) {
@@ -94,7 +95,7 @@ export async function sendTransactionTrezor(wallet: IWallet, srcAddress: IAddres
 					state: wallet.identifiers?.staticSessionId,
 				},
 			}),
-			60000 // 60 second timeout
+			160000
 		);
 
 		console.log('Trezor signing result:', result);
@@ -112,16 +113,7 @@ export async function sendTransactionTrezor(wallet: IWallet, srcAddress: IAddres
 		try {
 			const txResponse = await providerInstance.broadcastTransaction(signedTx.serializedTx);
 			console.log('Transaction broadcast successful:', txResponse.hash);
-
-			// Wait for confirmation with timeout
-			try {
-				const receipt = await Promise.race([txResponse.wait(), new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Transaction confirmation timeout')), 60000))]);
-				console.log('Transaction confirmed:', receipt);
-			} catch (waitError) {
-				console.warn('Transaction confirmation timeout:', waitError);
-				console.log('Transaction was sent (hash: ' + txResponse.hash + ') but confirmation timed out');
-				// Don't throw - transaction was sent successfully
-			}
+			return txResponse;
 		} catch (broadcastError) {
 			console.error('Failed to broadcast transaction:', broadcastError);
 			throw new Error(`Failed to broadcast transaction: ${broadcastError instanceof Error ? broadcastError.message : 'Unknown error'}`);
