@@ -22,4 +22,7 @@ export * from './addressbook';
 export * from './trezor';
 export * from './ledger';
 
+// Transaction logging
+export * from './log';
+
 export * from './types';

@@ -18,7 +18,8 @@
   "./trezor-transaction": "./src/trezor-transaction.ts",
   "./ledger-transaction": "./src/ledger-transaction.ts",
   "./ledger-integration": "./src/ledger-integration.ts",
-  "./default-networks": "./src/default-networks.ts"
+  "./default-networks": "./src/default-networks.ts",
+  "./log": "./src/log.ts"
  },
  "scripts": {
   "typecheck": "tsc --noEmit"
