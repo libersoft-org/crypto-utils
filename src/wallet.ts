@@ -197,7 +197,7 @@ export function reorderAddresses(wallet: IWallet, reorderedAddresses: IAddress[]
 	wallets.update(ws => ws.map(w => (w.guid === wallet.guid ? { ...w, addresses: [...reorderedAddresses] } : w)));
 }
 
-export async function addHardwareWallet(type: 'trezor' | 'ledger', name: string, identifiers: any): Promise<void> {
+export async function addHardwareWallet(type: 'trezor' | 'ledger', name: string, identifiers: any): Promise<IWallet> {
 	console.debug('Adding hardware wallet:', type, name, identifiers);
 	const wallet: IWallet = {
 		guid: 'hwwallet-' + type + Date.now() + '-' + Math.random().toString(36).substring(2, 15),
@@ -211,6 +211,7 @@ export async function addHardwareWallet(type: 'trezor' | 'ledger', name: string,
 		return w;
 	});
 	selectedWalletID.set(wallet.guid);
+	return wallet;
 }
 
 export function isHardwareWallet(wallet: IWallet): boolean {

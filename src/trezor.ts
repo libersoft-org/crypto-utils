@@ -7,6 +7,7 @@ import TrezorConnectNode, { DEVICE_EVENT as DEVICE_EVENT_NODE } from '@trezor/co
 const TrezorConnect = typeof window !== 'undefined' ? TrezorConnectWeb : TrezorConnectNode;
 const DEVICE_EVENT = typeof window !== 'undefined' ? DEVICE_EVENT_WEB : DEVICE_EVENT_NODE;
 import type { IAddress, IWallet } from './types';
+import { localStorageSharedStore } from './utils/svelte-shared-store.ts';
 
 export interface TrezorAccount {
 	address: string;
@@ -21,6 +22,7 @@ export const trezorLoading = writable<boolean>(false);
 export const trezorError = writable<string | null>(null);
 export const isInitialized = writable<boolean>(false);
 export const trezorDevices = writable<Map<string, Device>>(new Map());
+export const usePopup = localStorageSharedStore<boolean>('trezorUsePopup', false);
 
 
 export const trezorDevice = derived([trezorState, trezorDevices], ([$trezorState, $trezorDevices]) => {
@@ -138,7 +140,7 @@ async function performInitialization(): Promise<void> {
 			},
 			debug: false,
 			transportReconnect: true,
-			popup: false, // must be true for trezor bridge connection
+			popup: get(usePopup)
 		};
 
 		await TrezorConnect.init(initConfig);
@@ -208,38 +210,6 @@ export async function getTrezorEthereumAccounts(startIndex: number = 0, count: n
 		}
 		return accounts;
 	});
-}
-
-async function readDeviceState(): Promise<void> {
-	// Read complete features and device state after device connection
-	try {
-		console.log('readDeviceState: Reading device features and state after connection...');
-		const [featuresResult, deviceStateResult] = await Promise.all([TrezorConnect.getFeatures(), TrezorConnect.getDeviceState()]);
-
-		if (isSuccessResponse(featuresResult)) {
-			console.log('readDeviceState: Device features obtained:', featuresResult);
-			console.log('readDeviceState: Device state obtained:', deviceStateResult);
-
-			/*			// Update device store with complete feature information
-			if (featuresResult.payload) {
-				//console.log('readDeviceState: Setting device info from features payload...');
-				//trezorDevice.set(createDeviceInfo(featuresResult.payload, event.payload));
-			}
-
-			// Update device state store with instance information
-			if (isSuccessResponse(deviceStateResult) && deviceStateResult.payload) {
-				console.log('readDeviceState: Setting device state with instance:', deviceStateResult.payload);
-				trezorState.set(deviceStateResult.payload);
-				trezorDevice.set({...get(trezorInfo), path: deviceStateResult.payload.path});
-			}
-
-			*/
-		} else {
-			console.log('readDeviceState: Failed to get device features, using event device info');
-		}
-	} catch (error) {
-		console.warn('readDeviceState: Error reading device features after connection:', error);
-	}
 }
 
 function forgetTrezor(): void {

@@ -41,7 +41,6 @@ export interface LedgerWallet {
 }
 export const ledgerConnected = writable<boolean>(false);
 export const ledgerDevice = writable<LedgerDevice | null>(null);
-export const ledgerConfig = writable<any>(null);
 export const ledgerAccounts = writable<LedgerAccount[]>([]);
 export const ledgerWallets = writable<LedgerWallet[]>([]);
 export const ledgerLoading = writable<boolean>(false);
