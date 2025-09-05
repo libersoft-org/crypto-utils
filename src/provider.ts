@@ -128,8 +128,9 @@ function connectToURL(): void {
 		});
 		p.on('network', (newNetwork: any) => {
 			if (get(provider) === p) {
+				console.log('Network changed to:', newNetwork);
 				const connType = isWebSocket ? 'WebSocket' : 'HTTP';
-				status.set({ color: 'green', text: `Connected to ${newNetwork.name} (${connType})` });
+				status.set({ color: 'orange', text: `Connecting... (${connType})` });
 			} else console.log('Ignoring network event from old provider');
 		});
 		p.getNetwork()
