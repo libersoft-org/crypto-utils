@@ -91,10 +91,7 @@ export function addNetwork(net: INetwork): boolean {
 		rpcURLs: net.rpcURLs?.map(url => url),
 		tokens: [],
 	};
-	networks.update(n => {
-		n.push(my_net);
-		return n;
-	});
+	networksAdd(my_net);
 	return true;
 }
 
@@ -276,7 +273,7 @@ export function addNetworkIfNotExists(network: any): boolean {
 	const exists = existingNetworks.find(n => n.name === network.name);
 	if (!exists) {
 		if (!network.guid) network.guid = getGuid();
-		networks.update(current => [...current, network]);
+		networksAdd(network);
 		return true;
 	}
 	return false;
@@ -294,7 +291,7 @@ export function replaceExistingNetwork(networkToReplace: any): void {
 export function addNetworkWithUniqueName(network: any): void {
 	const uniqueName = generateUniqueNetworkName(network.name);
 	const networkWithUniqueName = { ...network, name: uniqueName, guid: getGuid() };
-	networks.update(current => [...current, networkWithUniqueName]);
+	networksAdd(networkWithUniqueName);
 }
 
 export function hasNetworkWithName(name: string): boolean {
@@ -303,7 +300,7 @@ export function hasNetworkWithName(name: string): boolean {
 
 export function addSingleNetwork(network: any): void {
 	if (!network.guid) network.guid = getGuid();
-	networks.update(current => [...current, network]);
+	networksAdd(network);
 }
 
 export function findNetworkByName(name: string): any | undefined {
@@ -585,3 +582,26 @@ export function reorderNFTs(networkGuid: string, reorderedNFTs: INFT[]): void {
 		});
 	});
 }
+
+
+export function networksAdd(net: INetwork): void {
+	networks.update(n => {
+		n.push(net);
+		return n;
+	});
+	console.log('Added network:', net);
+	console.log('get(selectedNetworkID):', get(selectedNetworkID));
+	if (!get(selectedNetworkID))
+	{
+		console.log('Setting selectedNetworkID to new network');
+		selectedNetworkID.set(net.guid??null);
+	}
+}
+
+
+networks.subscribe((nets: INetwork[]) => {
+	if (!nets.find(n => n.guid === get(selectedNetworkID))) {
+		if (nets.length > 0) selectedNetworkID.set(nets[0].guid ?? null);
+		else selectedNetworkID.set(null);
+	}
+});
