@@ -328,7 +328,7 @@ export async function checkRPCServer(server: IRPCServer): Promise<void> {
 		if (isWebSocket) await checkWebSocketRPCServer(server, startTime);
 		else await checkHTTPRPCServer(server, startTime);
 	} catch (error) {
-		console.error('Error checking RPC server ' + server.url + ':', error);
+		console.info('Error checking RPC server ' + server.url + ':', (error as Error)?.message);
 		server.latency = null;
 		server.lastBlock = null;
 		server.blockAge = null;
@@ -338,8 +338,25 @@ export async function checkRPCServer(server: IRPCServer): Promise<void> {
 	}
 }
 
+// Helper function to make RPC calls with proper timeout handling
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
+	if (typeof AbortSignal.timeout === 'function') {
+		// Modern browsers - use native implementation
+		return fetch(url, { ...options, signal: AbortSignal.timeout(timeoutMs) });
+	} else {
+		// Fallback for older browsers
+		const controller = new AbortController();
+		const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+		try {
+			return await fetch(url, { ...options, signal: controller.signal });
+		} finally {
+			clearTimeout(timeoutId);
+		}
+	}
+}
+
 async function checkHTTPRPCServer(server: IRPCServer, startTime: number): Promise<void> {
-	const blockNumberResponse = await fetch(server.url, {
+	const blockNumberResponse = await fetchWithTimeout(server.url, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({
@@ -348,15 +365,16 @@ async function checkHTTPRPCServer(server: IRPCServer, startTime: number): Promis
 			params: [],
 			id: 1,
 		}),
-		signal: AbortSignal.timeout(10000),
-	});
+	}, 10000);
+	
 	if (!blockNumberResponse.ok) throw new Error('HTTP ' + blockNumberResponse.status + ': ' + blockNumberResponse.statusText);
 	const blockNumberData = await blockNumberResponse.json();
 	if (blockNumberData.error) throw new Error('RPC Error: ' + blockNumberData.error.message);
 	const blockNumber = parseInt(blockNumberData.result, 16);
 	let blockAge: number | null = null;
+	
 	try {
-		const blockResponse = await fetch(server.url, {
+		const blockResponse = await fetchWithTimeout(server.url, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
@@ -365,8 +383,8 @@ async function checkHTTPRPCServer(server: IRPCServer, startTime: number): Promis
 				params: [blockNumberData.result, false],
 				id: 2,
 			}),
-			signal: AbortSignal.timeout(5000),
-		});
+		}, 5000);
+		
 		if (blockResponse.ok) {
 			const blockData = await blockResponse.json();
 			if (!blockData.error && blockData.result && blockData.result.timestamp) {
@@ -376,8 +394,9 @@ async function checkHTTPRPCServer(server: IRPCServer, startTime: number): Promis
 			}
 		}
 	} catch (blockError) {
-		console.warn('Could not get block details for ' + server.url + ':', blockError);
+		console.info('Could not get block details for ' + server.url + ':', blockError);
 	}
+	
 	const endTime = Date.now();
 	server.latency = endTime - startTime;
 	server.lastBlock = blockNumber;
