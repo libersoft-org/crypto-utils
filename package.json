@@ -25,7 +25,7 @@
   "typecheck": "tsc --noEmit"
  },
  "dependencies": {
-  "ethers": "^6.0.0",
+  "ethers": "^6.15.0",
   "@trezor/connect": "^9.0.0",
   "@trezor/connect-web": "^9.0.0",
   "@ledgerhq/hw-transport-webhid": "^6.0.0",
