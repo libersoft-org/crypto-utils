@@ -37,6 +37,11 @@ export interface IBalance {
 	decimals?: number;
 }
 
+export interface IAmount {
+	amount: bigint;
+	decimals?: number;
+}
+
 export interface IDefaultNetwork {
 	name: string;
 	chainID: number;

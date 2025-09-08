@@ -3,7 +3,7 @@ import { formatUnits, Contract } from 'ethers';
 import { selectedNetwork, nfts as nftStore, tokens } from './network';
 import { selectedAddress } from './wallet';
 import { provider } from './provider';
-import type { IBalance } from './types';
+import type { IBalance, IAmount } from './types';
 
 // Re-export types for backward compatibility
 export type { IBalance } from './types';
@@ -131,7 +131,7 @@ async function executeMulticall<T>(addresses: string[], abi: string[], functionN
 			});
 		});
 
-		console.log(`Using Multicall for ${addresses.length} tokens (${calls.length} calls) in ONE blockchain transaction`);
+		console.log(`aaUsing Multicall for ${addresses.length} tokens (${calls.length} calls) in ONE blockchain transaction`);
 
 		// Execute Multicall
 		const [blockNumber, returnData] = await multicallContract.aggregate(calls);
@@ -165,7 +165,7 @@ function processTokenInfoResults(returnData: string[], addresses: string[], erc2
 				console.warn(`Failed to get info for token ${address} via Multicall`);
 			}
 		} catch (error) {
-			console.warn(`Error processing token ${address} from Multicall:`, error);
+			console.info(`Error processing token ${address} from Multicall:`, error instanceof Error ? error.message : String(error));
 		}
 	}
 
@@ -259,10 +259,10 @@ function processTokenInfoBatchResults(batchResults: any[], addresses: string[], 
 					symbol: String(symbol),
 				});
 			} else {
-				console.warn(`Failed to get info for token ${address}`);
+				console.info(`Failed to get info for token ${address}`);
 			}
 		} catch (error) {
-			console.warn(`Error processing token ${address}:`, error);
+			console.info(`Error processing token ${address}:`, error instanceof Error ? error.message : String(error));
 		}
 	}
 
@@ -299,7 +299,7 @@ function processTokenBalanceBatchResults(batchResults: any[], tokens: any[], con
 				console.warn(`Failed to get balance for token ${token.symbol} via JSON-RPC batch - empty result`);
 			}
 		} catch (error) {
-			console.warn(`Error processing token balance ${token.symbol} from JSON-RPC batch:`, error);
+			console.info(`Error processing token balance ${token.symbol} from JSON-RPC batch:`, error instanceof Error ? error.message : String(error));
 		}
 	}
 
@@ -400,7 +400,7 @@ function processTokenBalanceResults(returnData: string[], tokens: any[], erc20In
 				console.warn(`Failed to get balance for token ${token.symbol} via Multicall - empty response`);
 			}
 		} catch (error) {
-			console.warn(`Error processing token balance ${token.symbol} from Multicall:`, error);
+			console.info(`Error processing token balance ${token.symbol} from Multicall:`, error instanceof Error ? error.message : String(error));
 		}
 	}
 
@@ -429,7 +429,7 @@ async function executeMulticallBalances(tokensWithAddresses: any[], provider: an
 			});
 		});
 
-		console.debug(`Using Multicall for ${tokensWithAddresses.length} token balances (${calls.length} calls) in ONE blockchain transaction`);
+		console.debug(`bbUsing Multicall for ${tokensWithAddresses.length} token balances (${calls.length} calls) in ONE blockchain transaction`);
 
 		// Execute Multicall
 		const [blockNumber, returnData] = await multicallContract.aggregate(calls);
@@ -585,7 +585,7 @@ export async function getTokenBalanceByAddress(contractAddress: string): Promise
 			decimals: Number(decimals),
 		};
 	} catch (error) {
-		console.debug('Error while getting token balance by address:', error);
+		console.debug('Error while getting token balance by address:', error instanceof Error ? error.message : String(error));
 		return null;
 	}
 }
@@ -643,12 +643,12 @@ export function formatBalance(balance: IBalance, roundToDecimals: number = -1, s
 	return Intl.NumberFormat(undefined, { minimumFractionDigits: 0, maximumFractionDigits: roundToDecimals }).format(Number(formatedAmount)) + (showCurrency ? ' ' + balance.currency : '');
 }
 
-// NEW: Batch token balances by contract addresses (not symbols)
-export async function getBatchTokenBalancesByAddresses(contractAddresses: string[]): Promise<Map<string, IBalance>> {
+// NEW: Batch token balances by contract addresses (not symbols) (this function is not aware of token symbols)
+export async function getBatchTokenAmountsByAddresses(contractAddresses: string[]): Promise<Map<string, IAmount>> {
 	const p = get(provider);
 	const net = get(selectedNetwork);
 	const addr = get(selectedAddress);
-	const result = new Map<string, IBalance>();
+	const result = new Map<string, IAmount>();
 
 	if (!net || !p || !addr || contractAddresses.length === 0) {
 		console.error('Network, provider, address not set or no addresses provided');
@@ -726,11 +726,11 @@ export async function getBatchTokenBalancesByAddresses(contractAddresses: string
 }
 
 // Helper functions for address-based batch loading
-async function tryMulticallBalancesByAddress(tokensWithAddresses: any[], provider: any, network: any, addr: any): Promise<Map<string, IBalance> | null> {
+async function tryMulticallBalancesByAddress(tokensWithAddresses: any[], provider: any, network: any, addr: any): Promise<Map<string, IAmount> | null> {
 	return executeMulticallBalancesByAddress(tokensWithAddresses, provider, network, addr);
 }
 
-async function executeMulticallBalancesByAddress(tokensWithAddresses: any[], provider: any, network: any, addr: any): Promise<Map<string, IBalance> | null> {
+async function executeMulticallBalancesByAddress(tokensWithAddresses: any[], provider: any, network: any, addr: any): Promise<Map<string, IAmount> | null> {
 	try {
 		console.log(`Trying Multicall3 for ${tokensWithAddresses.length} token balances by address`);
 		const multicallContract = new Contract(multicall3Address, multicallABI, provider);
@@ -749,11 +749,11 @@ async function executeMulticallBalancesByAddress(tokensWithAddresses: any[], pro
 				callData: erc20Interface.encodeFunctionData('decimals'),
 			});
 		});
-		console.log(`Using Multicall for ${tokensWithAddresses.length} token balances (${calls.length} calls) in ONE blockchain transaction`);
+		console.log(`ccUsing Multicall for ${tokensWithAddresses.length} token balances (${calls.length} calls) in ONE blockchain transaction`);
 		// Execute Multicall
 		const [blockNumber, returnData] = await multicallContract.aggregate(calls);
 		// Process results
-		const result = new Map<string, IBalance>();
+		const result = new Map<string, IAmount>();
 		for (let i = 0; i < tokensWithAddresses.length; i++) {
 			const balanceIndex = i * 2;
 			const decimalsIndex = i * 2 + 1;
@@ -764,14 +764,13 @@ async function executeMulticallBalancesByAddress(tokensWithAddresses: any[], pro
 					const decimals = erc20Interface.decodeFunctionResult('decimals', returnData[decimalsIndex])[0];
 					result.set(token.contract_address, {
 						amount: balance,
-						currency: 'TOKEN', // We don't have symbol yet
 						decimals: Number(decimals),
 					});
 				} else {
 					console.debug(`Failed to get balance for token ${token.contract_address} via Multicall`);
 				}
 			} catch (error) {
-				console.debug(`Error processing token ${token.contract_address} from Multicall:`, error);
+				console.debug(`Error processing token ${token.contract_address} from Multicall:`, error instanceof Error ? error.message : String(error));
 			}
 		}
 		console.debug(`Multicall processed ${result.size}/${tokensWithAddresses.length} token balances successfully`);
@@ -852,7 +851,7 @@ async function fallbackBatchBalanceCallByAddress(tokensWithAddresses: any[], pro
 					console.debug(`Failed to get balance for token ${token.contract_address} via JSON-RPC batch`);
 				}
 			} catch (error) {
-				console.debug(`Error processing token ${token.contract_address} from JSON-RPC batch:`, error);
+				console.debug(`Error processing token ${token.contract_address} from JSON-RPC batch:`, error instanceof Error ? error.message : String(error));
 			}
 		}
 		console.log(`JSON-RPC batch processed ${result.size}/${tokensWithAddresses.length} token balances successfully`);
