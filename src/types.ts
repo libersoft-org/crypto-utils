@@ -53,6 +53,7 @@ export interface IDefaultNetwork {
 	};
 	explorerURL: string;
 	tokens?: IToken[];
+	coingecko_asset_platform_id?: string;
 }
 
 export interface INetwork {
@@ -66,6 +67,7 @@ export interface INetwork {
 	nfts?: INFT[];
 	selectedRpcUrl?: string;
 	testnet?: boolean;
+	coingecko_asset_platform_id?: string;
 }
 export interface ICurrency {
 	name?: string;

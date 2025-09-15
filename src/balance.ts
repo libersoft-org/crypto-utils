@@ -115,7 +115,7 @@ export async function getBatchTokensInfo(contractAddresses: string[]): Promise<M
 // Generic Multicall executor
 async function executeMulticall<T>(addresses: string[], abi: string[], functionNames: string[], provider: any, network: any, additionalParams: any[] = [], processor: (returnData: string[], addresses: string[], erc20Interface: any, additionalParams: any[]) => Map<string, T>): Promise<Map<string, T> | null> {
 	try {
-		console.log(`Trying Multicall3 at ${multicall3Address} for chainID ${network.chainID}`);
+		//console.log(`Trying Multicall3 at ${multicall3Address} for chainID ${network.chainID}`);
 
 		const multicallContract = new Contract(multicall3Address, multicallABI, provider);
 		const erc20Interface = new Contract(addresses[0], abi, provider).interface;
@@ -131,7 +131,7 @@ async function executeMulticall<T>(addresses: string[], abi: string[], functionN
 			});
 		});
 
-		console.log(`aaUsing Multicall for ${addresses.length} tokens (${calls.length} calls) in ONE blockchain transaction`);
+		//console.log(`aaUsing Multicall for ${addresses.length} tokens (${calls.length} calls) in ONE blockchain transaction`);
 
 		// Execute Multicall
 		const [blockNumber, returnData] = await multicallContract.aggregate(calls);
@@ -139,7 +139,7 @@ async function executeMulticall<T>(addresses: string[], abi: string[], functionN
 		// Process results using the provided processor function
 		return processor(returnData, addresses, erc20Interface, additionalParams);
 	} catch (error) {
-		console.debug(`Multicall3 failed for chainID ${network.chainID}:`, error);
+		//console.debug(`Multicall3 failed for chainID ${network.chainID}:`, error);
 		return null;
 	}
 }
@@ -640,7 +640,8 @@ export function formatBalance(balance: IBalance, roundToDecimals: number = -1, s
 	const decimals = balance.decimals !== undefined && balance.decimals !== null ? balance.decimals : 18;
 	roundToDecimals = roundToDecimals > -1 ? roundToDecimals : decimals;
 	// TODO: Intl.NumberFormat supports maximumFractionDigits only up to 20, so we need to handle larger fraction numbers differently
-	return Intl.NumberFormat(undefined, { minimumFractionDigits: 0, maximumFractionDigits: roundToDecimals }).format(Number(formatedAmount)) + (showCurrency ? ' ' + balance.currency : '');
+	console.log('Formatting balance:', formatedAmount, 'with', roundToDecimals, 'decimals');
+	return Intl.NumberFormat(undefined, { minimumFractionDigits: 0,  maximumFractionDigits: roundToDecimals }).format(Number(formatedAmount)) + (showCurrency ? ' ' + balance.currency : '');
 }
 
 // NEW: Batch token balances by contract addresses (not symbols) (this function is not aware of token symbols)
@@ -1026,7 +1027,7 @@ export async function getNFTsFromConfiguredContracts(): Promise<INFTItem[]> {
 		if (!configuredNFT.contract_address) continue;
 
 		try {
-			console.log(`Checking NFT contract: ${configuredNFT.contract_address}`);
+			console.log(`CHECKING NFT CONTRACT: ${configuredNFT.contract_address}`);
 
 			// Try ERC721 first
 			try {
