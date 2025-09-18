@@ -2,10 +2,10 @@ import { get, writable, derived } from 'svelte/store';
 import { localStorageSharedStore } from './utils/svelte-shared-store';
 import { getGuid } from './utils/utils';
 import { defaultNetworks } from './default-networks';
-import type { INetwork, IToken, ICurrency, IRPCServer, INFT, INFTData, INetworkStatus, IDefaultNetwork } from './types';
+import type { INetwork, IToken, ICurrency, IRPCServer, INFT, INetworkStatus, IDefaultNetwork } from './types';
 
 // Re-export types for backward compatibility
-export type { INetwork, IToken, ICurrency, IRPCServer, INFT, INFTData, INetworkStatus, IDefaultNetwork } from './types';
+export type { INetwork, IToken, ICurrency, IRPCServer, INFT, INetworkStatus, IDefaultNetwork } from './types';
 
 export const default_networks = writable<INetwork[]>(
 	defaultNetworks.map(network => ({

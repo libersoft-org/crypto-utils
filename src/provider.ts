@@ -245,3 +245,10 @@ export async function ensureProviderConnected(): Promise<JsonRpcProvider | WebSo
 	}
 	return providerInstance;
 }
+
+export function getProviderUrl(network: any): string {
+	if (network.selectedRpcUrl) return network.selectedRpcUrl;
+	if (network.rpcURLs && network.rpcURLs.length > 0) return network.rpcURLs[0];
+	throw new Error('No RPC URL available');
+}
+

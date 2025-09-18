@@ -21,14 +21,21 @@ export interface IAddressBookItem {
 	name: string;
 	address: string;
 }
+
 export interface IAddressBookValidationResult {
 	isValid: boolean;
 	error?: string;
 }
+
 export interface IAddressBookImportResult {
 	success: boolean;
 	error?: string;
 	addedCount?: number;
+}
+
+export interface IAmount {
+	amount: bigint;
+	decimals?: number;
 }
 
 export interface IBalance {
@@ -37,9 +44,10 @@ export interface IBalance {
 	decimals?: number;
 }
 
-export interface IAmount {
-	amount: bigint;
-	decimals?: number;
+export interface IBalanceWithFiat {
+	crypto: IBalance;
+	fiat: IBalance | null;
+	timestamp: Date;
 }
 
 export interface IDefaultNetwork {
@@ -69,12 +77,14 @@ export interface INetwork {
 	testnet?: boolean;
 	coingecko_asset_platform_id?: string;
 }
+
 export interface ICurrency {
 	name?: string;
 	symbol?: string;
 	contract_address?: string;
 	iconURL?: string;
 }
+
 export interface IRPCServer {
 	url: string;
 	latency: number | null;
@@ -83,17 +93,22 @@ export interface IRPCServer {
 	isAlive: boolean;
 	checking?: boolean;
 }
+
 export interface ITokenData {
 	contract_address: string;
 	iconURL?: string;
 }
+
 export interface IToken {
 	guid: string;
 	item: ITokenData;
 }
-export interface INFTData {
+
+export interface INFT {
+	guid: string;
 	contract_address: string;
 	token_id: string;
+	/*
 	name?: string;
 	description?: string;
 	image?: string;
@@ -103,10 +118,7 @@ export interface INFTData {
 		trait_type: string;
 		value: string | number;
 	}>;
-}
-export interface INFT {
-	guid: string;
-	item: INFTData;
+  */
 }
 
 export interface INetworkStatus {
@@ -134,3 +146,49 @@ export interface TransactionTimeEstimate {
 	average: string;
 	high: string;
 }
+
+export interface MulticallCall {
+	target: string;
+	callData: string;
+}
+
+export interface BatchRequestPayload {
+	jsonrpc: string;
+	id: number;
+	method: string;
+	params: any[];
+}
+
+export interface ITokenInfo {
+	symbol: string;
+	name: string;
+}
+
+export interface INFTItem {
+	contract_address: string;
+	token_id: string;
+	name?: string;
+	description?: string;
+	image?: string;
+	animation_url?: string;
+	external_url?: string;
+	attributes?: Array<{
+		trait_type: string;
+		value: string | number;
+	}>;
+	// Collection information
+	collection_name?: string;
+	collection_symbol?: string;
+	// Balance information for ERC-1155
+	balance?: number;
+}
+
+
+export interface INFTItemDisplayData {
+	name: string;
+	collection: string;
+	balance: number;
+	loading: boolean;
+}
+
+export type guid = string;
