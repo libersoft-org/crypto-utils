@@ -3,10 +3,26 @@ import { localStorageSharedStore } from './utils/svelte-shared-store';
 import { getIndexedAccountPath, HDNodeWallet, Mnemonic, randomBytes } from 'ethers';
 import { doAddHardwareAddressTrezor } from './trezor';
 import { doAddHardwareAddressLedger } from './ledger';
-import type { IWallet, IAddress } from './types';
 
-// Re-export types for backward compatibility
-export type { IWallet, IAddress } from './types';
+
+export interface IWallet {
+	guid: string;
+	type?: 'software' | 'trezor' | 'ledger';
+	name: string;
+	phrase?: string;
+	address?: string;
+	selected_address_index: number;
+	addresses?: IAddress[];
+	identifiers?: any; // For hardware wallets, this can include deviceId
+}
+
+export interface IAddress {
+	address: string;
+	name: string;
+	path: string;
+	index: number;
+}
+
 
 export const wallets = localStorageSharedStore<IWallet[]>('wallets', []);
 export const selectedWalletID = localStorageSharedStore<string | null>('selectedWalletID', null);

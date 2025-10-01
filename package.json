@@ -19,7 +19,11 @@
   "./ledger-transaction": "./src/ledger-transaction.ts",
   "./ledger-integration": "./src/ledger-integration.ts",
   "./default-networks": "./src/default-networks.ts",
-  "./log": "./src/log.ts"
+  "./log": "./src/log.ts",
+  "./tokens": "./src/tokens.ts",
+  "./nfts": "./src/nfts.ts",
+  "./currencies": "./src/currencies.ts",
+  "./refresh": "./src/refresh.ts"
  },
  "scripts": {
   "typecheck": "tsc --noEmit"

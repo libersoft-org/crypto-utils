@@ -6,6 +6,7 @@ import { selectedNetwork } from './network';
 import { selectedAddress } from './wallet';
 import { provider } from './provider';
 import type { IBalance, IBalanceWithFiat } from './types';
+export type { IBalance };
 import { refreshInterval } from './common';
 
 
@@ -26,8 +27,9 @@ export function stopBalanceRefresh() {
 }
 
 
-async function refreshBalance() {
-	console.log('Refreshing native balance for', $selectedAddress?.address);
+export async function refreshBalance() {
+	const addr = get(selectedAddress);
+	console.log('Refreshing native balance for', addr?.address);
 	if (balanceTimer) clearTimeout(balanceTimer);
 	isLoadingBalance.set(true);
 	try {

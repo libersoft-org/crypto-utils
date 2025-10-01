@@ -1,11 +1,27 @@
 import { get } from 'svelte/store';
 import { isAddress } from 'ethers';
 import { localStorageSharedStore } from './utils/svelte-shared-store';
-import type { IAddressBookItem, IAddressBookValidationResult, IAddressBookImportResult } from './types';
 import { getGuid } from './utils/utils';
 
-// Re-export types for backward compatibility
-export type { IAddressBookItem, IAddressBookValidationResult, IAddressBookImportResult } from './types';
+
+
+export interface IAddressBookItem {
+	guid: string;
+	name: string;
+	address: string;
+}
+
+export interface IAddressBookValidationResult {
+	isValid: boolean;
+	error?: string;
+}
+
+export interface IAddressBookImportResult {
+	success: boolean;
+	error?: string;
+	addedCount?: number;
+}
+
 
 
 export const addressBook = localStorageSharedStore<IAddressBookItem[]>('addressbook', []);

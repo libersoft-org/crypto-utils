@@ -1,5 +1,11 @@
 import { Contract } from 'ethers';
-import type { MulticallCall } from './types';
+
+
+export interface MulticallCall {
+	target: string;
+	callData: string;
+}
+
 
 export const refreshInterval = 30;
 

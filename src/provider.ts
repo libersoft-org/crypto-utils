@@ -2,7 +2,26 @@ import { get, writable, type Writable } from 'svelte/store';
 import { JsonRpcProvider, WebSocketProvider } from 'ethers';
 import { selectedNetwork, getSelectedRpcUrl, setSelectedRpcUrl } from './network';
 import { derivedWithEquals } from './utils/derivedWithEquals';
-import type { INetworkStatus } from './types';
+
+
+
+export interface IRPCServer {
+	url: string;
+	latency: number | null;
+	lastBlock: number | null;
+	blockAge: number | null;
+	isAlive: boolean;
+	checking?: boolean;
+}
+
+
+export interface INetworkStatus {
+	color: 'red' | 'orange' | 'green';
+	text: string;
+}
+
+
+
 
 
 export const status = writable<INetworkStatus>({ color: 'red', text: 'No connection' });

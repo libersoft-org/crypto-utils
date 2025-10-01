@@ -1,32 +1,13 @@
-// Main exports from crypto-utils package
+// Main entry point for libersoft-crypto
+// Import specific modules via subpaths:
+// - 'libersoft-crypto/wallet'
+// - 'libersoft-crypto/balance' 
+// - 'libersoft-crypto/tokens'
+// - 'libersoft-crypto/nfts'
+// - 'libersoft-crypto/network'
+// - 'libersoft-crypto/provider'
+// - etc.
 
-// Wallet functionality
-export * from './wallet';
-
-// Balance functionality  
-export * from './balance';
-
-// Network functionality
-export * from './network';
-
-// Provider functionality
-export * from './provider';
-
-// Transaction functionality
-export * from './transaction';
-
-// Address book functionality
-export * from './addressbook';
-
-// Hardware wallet support
-export * from './trezor';
-export * from './ledger';
-
-// Transaction logging
-export * from './log';
-
+// Only export shared types and utilities that belong at the top level
 export * from './types';
-
-// Refresh control
-export * from './refresh';
 

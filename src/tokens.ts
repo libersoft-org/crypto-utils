@@ -1,36 +1,256 @@
 import { Contract } from 'ethers';
-import type { IAmount, IBalance, ITokenData, ITokenInfo } from './types.ts';
-import { get } from 'svelte/store';
+import { get, writable, derived } from 'svelte/store';
+import type { IAmount, IBalance, IBalanceWithFiat, Guid, ContractAddress } from './types.ts';
 import {
 	provider,
 	getProviderUrl
 
 } from './provider.ts';
-import { selectedNetwork, tokens } from './network.ts';
+import { selectedNetwork } from './network.ts';
 import { selectedAddress } from './wallet.ts';
-import {
-	BatchRequestPayload,
-	MulticallCall
-} from './types.ts';
 import {
 	executeMulticall,
 	multicall3Address,
-	multicallABI
-
+	multicallABI,
+	type MulticallCall
 } from './common';
 
 
 
+/**
+ * Basic token definition - the minimal data needed to identify a token
+ */
+export interface ITokenDef {
+	contract_address: ContractAddress;
+	iconURL?: string;
+}
 
-export	let tokenInfos = $state(new Map<string, ITokenInfo>());
-export	let tokenBalances = $state(new Map<string, ITokenData>());
-export	let loadingTokens = $state(new Set<string>());
-export	let loadingTokenInfos = $state(new Set<string>());
-export	let tokenCountdowns = $state(new Map<string, number>());
+/**
+ * User-configured token - includes GUID for identification in user's token list
+ */
+export interface ITokenConf extends ITokenDef {
+	guid: Guid;
+}
+
+/**
+ * Token information loaded from blockchain (name, symbol, decimals)
+ */
+export interface ITokenLoadedInfo {
+	symbol: string;
+	name: string;
+}
+
+export interface BatchRequestPayload {
+	jsonrpc: string;
+	id: number;
+	method: string;
+	params: any[];
+}
 
 
-function getTokensWithContracts() {
-	return $tokens.filter(token => token.contract_address);
+
+
+/**
+ * Token stores for managing token-related data
+ */
+
+/**
+ * Store for token information (name, symbol) keyed by contract address
+ */
+export const tokenInfos = writable<Map<ContractAddress, ITokenLoadedInfo>>(new Map());
+
+/**
+ * Store for token balances (with fiat conversion) keyed by contract address
+ */
+export const tokenBalances = writable<Map<ContractAddress, IBalanceWithFiat>>(new Map());
+
+/**
+ * Set of contract addresses currently loading balance data
+ */
+export const loadingTokens = writable<Set<ContractAddress>>(new Set());
+
+/**
+ * Set of contract addresses currently loading info data (name, symbol)
+ */
+export const loadingTokenInfos = writable<Set<ContractAddress>>(new Set());
+
+/**
+ * Store for configured tokens from the selected network
+ * Simple accessor to selectedNetwork.tokens without transformation
+ */
+export const tokens = derived([selectedNetwork], ([$selectedNetwork]) => {
+	return $selectedNetwork?.tokens || [];
+});
+
+
+/**
+ * Display-ready token data interface for UI components
+ * Combines token configuration with loaded data and loading states
+ */
+export interface ITokenForDisplay {
+	token: ITokenConf;
+	info: ITokenLoadedInfo | undefined;
+	balance: IBalanceWithFiat | undefined;
+	isLoadingInfo: boolean;
+	isLoadingBalance: boolean;
+	symbol: string;
+	name: string;
+}
+
+/**
+ * Derived store that combines all token data for display purposes
+ * Provides a reactive array of display-ready token data for UI components
+ */
+export const tokensForDisplay = derived(
+	[tokens, tokenInfos, tokenBalances, loadingTokens, loadingTokenInfos],
+	([$tokens, $tokenInfos, $tokenBalances, $loadingTokens, $loadingTokenInfos]) => {
+		// Filter tokens that have contract addresses
+		const tokensWithContracts = $tokens.filter(token => token.contract_address);
+		
+		// Transform into display-ready data
+		return tokensWithContracts.map(t => {
+			const contractAddress = t.contract_address;
+			if (!contractAddress) return null;
+
+			const tokenInfo = $tokenInfos.get(contractAddress);
+			const tokenBalance = $tokenBalances.get(contractAddress);
+			const isLoadingInfo = $loadingTokenInfos.has(contractAddress);
+			const isLoadingBalance = $loadingTokens.has(contractAddress);
+
+			return {
+				token: t,
+				info: tokenInfo,
+				balance: tokenBalance,
+				isLoadingInfo,
+				isLoadingBalance,
+				symbol: tokenInfo?.symbol || 'UNKNOWN',
+				name: tokenInfo?.name || 'Unknown Token',
+			} satisfies ITokenForDisplay;
+		}).filter(Boolean) as ITokenForDisplay[];
+	}
+);
+
+
+// Helper functions for store updates
+function updateReactiveMap<T>(map: Map<string, T>, updater: (map: Map<string, T>) => void): Map<string, T> {
+	updater(map);
+	return new Map(map);
+}
+
+export function updateTokenInfo(contractAddress: string, tokenInfo: { name: string; symbol: string } | null): void {
+	tokenInfos.update(map => {
+		const newMap = new Map(map);
+		if (tokenInfo) {
+			newMap.set(contractAddress, tokenInfo);
+		} else {
+			newMap.delete(contractAddress);
+		}
+		return newMap;
+	});
+}
+
+function updateReactiveSet<T>(set: Set<T>, updater: (set: Set<T>) => void): Set<T> {
+	updater(set);
+	return new Set(set);
+}
+
+/**
+ * Get all configured tokens that have contract addresses
+ * @returns Array of tokens with valid contract addresses
+ */
+export function getTokensWithContracts(): ITokenConf[] {
+	return get(tokens).filter(token => token.contract_address);
+}
+
+// Token balance management functions
+/**
+ * Refresh the balance for a specific token contract
+ * @param contractAddress - The contract address of the token to refresh
+ */
+export async function refreshTokenBalance(contractAddress: ContractAddress): Promise<void> {
+	const addr = get(selectedAddress);
+	if (!addr) return;
+
+	loadingTokens.update(set => updateReactiveSet(set, s => s.add(contractAddress)));
+
+	try {
+		const amounts = await getBatchTokenAmountsByAddresses([contractAddress]);
+		const amount = amounts.get(contractAddress);
+		
+		if (amount) {
+			const tokenInfo = get(tokenInfos).get(contractAddress);
+			const tokenBalance: IBalance = {
+				amount: amount.amount,
+				currency: tokenInfo?.symbol || 'TOKEN',
+				decimals: amount.decimals
+			};
+			
+			// Get fiat conversion
+			const { getExchange } = await import('./balance');
+			const fiatBalance = await getExchange(tokenBalance, 'USD');
+			
+			tokenBalances.update(map => updateReactiveMap(map, m => {
+				m.set(contractAddress, {
+					crypto: tokenBalance,
+					fiat: fiatBalance,
+					timestamp: new Date()
+				});
+			}));
+		}
+	} catch (error) {
+		console.error(`Error refreshing token balance for ${contractAddress}:`, error);
+	} finally {
+		loadingTokens.update(set => updateReactiveSet(set, s => s.delete(contractAddress)));
+	}
+}
+
+export async function loadAllTokenInfos(): Promise<void> {
+	const tokensWithContracts = getTokensWithContracts();
+	const currentlyLoading = get(loadingTokenInfos);
+	const currentInfos = get(tokenInfos);
+	
+	const tokensToLoad = tokensWithContracts.filter(token => 
+		token.contract_address && 
+		!currentlyLoading.has(token.contract_address) && 
+		!currentInfos.has(token.contract_address)
+	);
+
+	if (!tokensToLoad.length) return;
+
+	console.log('Loading token infos for', tokensToLoad.length, 'tokens');
+
+	// Mark all as loading
+	loadingTokenInfos.update(set => updateReactiveSet(set, s => {
+		tokensToLoad.forEach(token => token.contract_address && s.add(token.contract_address));
+	}));
+
+	try {
+		const contractAddresses = tokensToLoad.map(token => token.contract_address);
+		const batchInfos = await getBatchTokensInfo(contractAddresses);
+		
+		// Update token infos
+		tokenInfos.update(map => updateReactiveMap(map, m => {
+			batchInfos.forEach((info, contractAddress) => {
+				m.set(contractAddress, info);
+			});
+		}));
+
+	} catch (error) {
+		console.error('Error in batch token info loading:', error);
+		// Fallback for all tokens
+		tokenInfos.update(map => updateReactiveMap(map, m => {
+			tokensToLoad.forEach(token => {
+				if (token.contract_address && !m.has(token.contract_address)) {
+					m.set(token.contract_address, { symbol: 'UNKNOWN', name: 'Unknown token' });
+				}
+			});
+		}));
+	} finally {
+		// Mark all as completed
+		loadingTokenInfos.update(set => updateReactiveSet(set, s => {
+			tokensToLoad.forEach(token => token.contract_address && s.delete(token.contract_address));
+		}));
+	}
 }
 
 
@@ -720,10 +940,12 @@ function processTokenInfoResults(returnData: string[], addresses: string[], erc2
 }
 
 
-export async function getBatchTokensInfo(contractAddresses: string[]): Promise<Map<string, {
-	name: string;
-	symbol: string
-}>> {
+/**
+ * Get token information (name and symbol) for multiple contract addresses in batch
+ * @param contractAddresses - Array of contract addresses to get info for
+ * @returns Map of contract addresses to token info
+ */
+export async function getBatchTokensInfo(contractAddresses: ContractAddress[]): Promise<Map<ContractAddress, ITokenLoadedInfo>> {
 	const p = get(provider);
 	const net = get(selectedNetwork);
 	const result = new Map<string, { name: string; symbol: string }>();
@@ -766,12 +988,22 @@ export async function getBatchTokensInfo(contractAddresses: string[]): Promise<M
 }
 
 
-export async function getTokenInfo(contractAddress: string): Promise<{ name: string; symbol: string } | null> {
+/**
+ * Get token information (name and symbol) for a single contract address
+ * @param contractAddress - The contract address to get info for
+ * @returns Token info object or null if not found
+ */
+export async function getTokenInfo(contractAddress: ContractAddress): Promise<ITokenLoadedInfo | null> {
 	const batchResult = await getBatchTokensInfo([contractAddress]);
 	return batchResult.get(contractAddress) || null;
 }
 
-export async function getTokenDecimals(contractAddress: string): Promise<number> {
+/**
+ * Get the decimal places for a token contract
+ * @param contractAddress - The contract address to get decimals for
+ * @returns Number of decimal places for the token
+ */
+export async function getTokenDecimals(contractAddress: ContractAddress): Promise<number> {
 	const p = get(provider);
 	if (!p) {
 		console.error('Provider not set');

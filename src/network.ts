@@ -2,10 +2,44 @@ import { get, writable, derived } from 'svelte/store';
 import { localStorageSharedStore } from './utils/svelte-shared-store';
 import { getGuid } from './utils/utils';
 import { defaultNetworks } from './default-networks';
-import type { INetwork, IToken, ICurrency, IRPCServer, INFT, INetworkStatus, IDefaultNetwork } from './types';
+import type { ICurrency } from './types';
+import type { ITokenConf } from './tokens';
+import type { INftConf } from './nfts';
 
-// Re-export types for backward compatibility
-export type { INetwork, IToken, ICurrency, IRPCServer, INFT, INetworkStatus, IDefaultNetwork } from './types';
+// Re-export types that UI components need
+export type { ICurrency, ITokenConf, INftConf };
+import type { IRPCServer, INetworkStatus } from './provider';
+
+
+export interface IDefaultNetwork {
+	name: string;
+	chainID: number;
+	testnet: boolean;
+	rpcURLs: string[];
+	currency: {
+		symbol: string;
+		iconURL: string;
+	};
+	explorerURL: string;
+	tokens?: ITokenConf[];
+	coingecko_asset_platform_id?: string;
+}
+
+export interface INetwork {
+	guid?: string;
+	name: string;
+	chainID: number;
+	explorerURL?: string;
+	currency: ICurrency;
+	rpcURLs?: string[];
+	tokens?: ITokenConf[];
+	nfts?: INftConf[];
+	selectedRpcUrl?: string;
+	testnet?: boolean;
+	coingecko_asset_platform_id?: string;
+}
+
+
 
 export const default_networks = writable<INetwork[]>(
 	defaultNetworks.map(network => ({
@@ -17,7 +51,6 @@ export const default_networks = writable<INetwork[]>(
 export const networks = localStorageSharedStore<INetwork[]>('networks', []);
 export const selectedNetworkID = localStorageSharedStore<string | null>('selectedNetworkID', null);
 export const selectedNetwork = writable<INetwork | undefined>();
-export const tokenInfos = writable<Map<string, { name: string; symbol: string } | null>>(new Map());
 
 
 networks.subscribe((nets: INetwork[]) => {
@@ -114,7 +147,7 @@ export function deleteNetwork(net: INetwork): void {
 	});
 }
 
-export function addToken(networkGuid: string, token: IToken): void {
+export function addToken(networkGuid: string, token: ITokenConf): void {
 	networks.update(networks => {
 		return networks.map(network => {
 			if (network.guid === networkGuid) {
@@ -128,7 +161,7 @@ export function addToken(networkGuid: string, token: IToken): void {
 	});
 }
 
-export function editToken(networkGuid: string, token: IToken): void {
+export function editToken(networkGuid: string, token: ITokenConf): void {
 	networks.update(networks => {
 		return networks.map(network => {
 			if (network.guid === networkGuid) {
@@ -142,53 +175,15 @@ export function editToken(networkGuid: string, token: IToken): void {
 	});
 }
 
-export let tokens = derived([selectedNetwork], ([$selectedNetwork]) => {
-	return ($selectedNetwork?.tokens || []).map(token => ({
-		guid: token.guid,
-		contract_address: token.item?.contract_address,
-		iconURL: token.item?.iconURL,
-	}));
-});
 
 export let nfts = derived([selectedNetwork], ([$selectedNetwork]) => {
 	return ($selectedNetwork?.nfts || []).map(nft => ({
 		guid: nft.guid,
-		contract_address: nft.item?.contract_address,
-		token_id: nft.item?.token_id,
-		name: nft.item?.name,
-		description: nft.item?.description,
-		image: nft.item?.image,
-		animation_url: nft.item?.animation_url,
-		external_url: nft.item?.external_url,
-		attributes: nft.item?.attributes,
+		contract_address: nft.contract_address,
+		token_id: nft.token_id,
 	}));
 });
 
-export let currencies = derived([selectedNetwork, tokens, tokenInfos], ([$selectedNetwork, $tokens, $tokenInfos]) => {
-	const currencyList: ICurrency[] = [];
-	// Add native currency
-	if ($selectedNetwork?.currency?.symbol) {
-		currencyList.push({
-			symbol: $selectedNetwork.currency.symbol,
-			iconURL: $selectedNetwork.currency.iconURL,
-		});
-	}
-	// Add tokens
-	if ($tokens && $tokens.length > 0) {
-		$tokens.forEach(token => {
-			if (token.contract_address) {
-				const tokenInfo = $tokenInfos.get(token.contract_address);
-				const symbol = tokenInfo?.symbol || token.contract_address.slice(0, 8) + '...';
-				currencyList.push({
-					symbol: symbol,
-					iconURL: token.iconURL,
-					contract_address: token.contract_address,
-				});
-			}
-		});
-	}
-	return currencyList;
-});
 
 export function deleteToken(networkGuid: string, tokenGuid: string): void {
 	networks.update(networks => {
@@ -204,15 +199,8 @@ export function deleteToken(networkGuid: string, tokenGuid: string): void {
 	});
 }
 
-export function updateTokenInfo(contractAddress: string, tokenInfo: { name: string; symbol: string } | null): void {
-	tokenInfos.update(map => {
-		const newMap = new Map(map);
-		newMap.set(contractAddress, tokenInfo);
-		return newMap;
-	});
-}
 
-export function reorderTokens(networkGuid: string, reorderedTokens: IToken[]): void {
+export function reorderTokens(networkGuid: string, reorderedTokens: ITokenConf[]): void {
 	networks.update(networks => {
 		return networks.map(network => {
 			if (network.guid === networkGuid) {
@@ -534,14 +522,15 @@ export function reorderNetworks(reorderedNetworks: INetwork[]): void {
 	networks.set(reorderedNetworks);
 }
 
-export function addNFT(networkGuid: string, nftData: INFTData): void {
+export function addNFT(networkGuid: string, contract_address: string, token_id: string): void {
 	networks.update(nets => {
 		const net = nets.find(n => n.guid === networkGuid);
 		if (!net) return nets;
 		if (!net.nfts) net.nfts = [];
-		const newNft: INFT = {
+		const newNft: INftConf = {
 			guid: getGuid(),
-			item: nftData,
+			contract_address,
+			token_id,
 		};
 		net.nfts.push(newNft);
 		return nets;
@@ -557,19 +546,20 @@ export function deleteNFT(networkGuid: string, nftGuid: string): void {
 	});
 }
 
-export function editNFT(networkGuid: string, nftGuid: string, nftData: INFTData): void {
+export function editNFT(networkGuid: string, nftGuid: string, contract_address: string, token_id: string): void {
 	networks.update(nets => {
 		const net = nets.find(n => n.guid === networkGuid);
 		if (!net?.nfts) return nets;
 		const nft = net.nfts.find(n => n.guid === nftGuid);
 		if (nft) {
-			nft.item = nftData;
+			nft.contract_address = contract_address;
+			nft.token_id = token_id;
 		}
 		return nets;
 	});
 }
 
-export function reorderNFTs(networkGuid: string, reorderedNFTs: INFT[]): void {
+export function reorderNFTs(networkGuid: string, reorderedNFTs: INftConf[]): void {
 	networks.update(networks => {
 		return networks.map(network => {
 			if (network.guid === networkGuid) {
