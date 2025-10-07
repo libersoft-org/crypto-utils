@@ -1,7 +1,7 @@
 /* Centralized fiat currency exchange rate management */
 
 import { writable, derived, get } from 'svelte/store';
-import type { IBalance } from './types';
+import type { IBalance, IBalanceWithFiat } from './types';
 import { localStorageSharedStore } from './utils/svelte-shared-store.ts';
 
 // Types
@@ -21,27 +21,27 @@ interface ExchangeRatesCache {
 }
 
 // Constants
-const EXCHANGE_RATES_CACHE_DURATION = 60000; // 1 minute cache
-const DEFAULT_FIAT_CURRENCY: Currency = 'USD';
+const EXCHANGE_RATES_CACHE_DURATION = 15 * 60 * 1000;
+
+
 
 // Stores - separate cache per currency
-export const exchangeRatesCaches = writable<Record<Currency, ExchangeRatesCache>>({});
+export const exchangeRatesCaches = writable<Map<Currency, ExchangeRatesCache>>(new Map());
 export const isRefreshingExchangeRates = writable(false);
 
-// Get specific currency's cached rates
-export const getExchangeRatesForCurrency = (currency: Currency) => derived(
-	[exchangeRatesCaches],
-	([$exchangeRatesCaches]) => $exchangeRatesCaches[currency]?.data || null
-);
 
-// Check if cache is valid for a specific currency
+
+
+// Check if cache exists and is recent-enough for a specific currency
 function isCacheValid(cache: ExchangeRatesCache | null): boolean {
 	if (!cache) return false;
 	return Date.now() - cache.timestamp < EXCHANGE_RATES_CACHE_DURATION;
 }
 
+
+
 // Fetch fresh exchange rates from API
-async function fetchExchangeRates(currency: Currency = DEFAULT_FIAT_CURRENCY): Promise<ExchangeRatesData | null> {
+async function fetchExchangeRates(currency: Currency): Promise<ExchangeRatesData | null> {
 	const url = `https://api.coinbase.com/v2/exchange-rates?currency=${currency}`;
 	try {
 		const response = await fetch(url);
@@ -64,6 +64,7 @@ async function fetchExchangeRates(currency: Currency = DEFAULT_FIAT_CURRENCY): P
 	}
 }
 
+
 // Update cache for specific currency
 function updateCacheForCurrency(currency: Currency, data: ExchangeRatesData): void {
 	exchangeRatesCaches.update(caches => ({
@@ -75,32 +76,14 @@ function updateCacheForCurrency(currency: Currency, data: ExchangeRatesData): vo
 	}));
 }
 
-// Get exchange rates (from cache if valid, otherwise fetch fresh)
-export async function getExchangeRates(currency: Currency = DEFAULT_FIAT_CURRENCY): Promise<ExchangeRatesData | null> {
-	// Check cache first
-	const caches = get(exchangeRatesCaches);
-	const cache = caches[currency];
-	if (isCacheValid(cache)) {
-		return cache.data;
-	}
 
-	// Fetch fresh rates
-	isRefreshingExchangeRates.set(true);
-	try {
-		const rates = await fetchExchangeRates(currency);
-		if (rates) {
-			updateCacheForCurrency(currency, rates);
-		}
-		return rates;
-	} finally {
-		isRefreshingExchangeRates.set(false);
-	}
-}
 
 // Force refresh exchange rates for specific currency (ignore cache)
-export async function refreshExchangeRates(currency: Currency = DEFAULT_FIAT_CURRENCY): Promise<ExchangeRatesData | null> {
+export async function refreshExchangeRates(currency: Currency): Promise<ExchangeRatesData | null> {
 	console.log('Force refreshing exchange rates for currency:', currency);
-	
+
+	while (get(isRefreshingExchangeRates)) {await new Promise(resolve => setTimeout(resolve, 100));}
+
 	isRefreshingExchangeRates.set(true);
 	try {
 		const rates = await fetchExchangeRates(currency);
@@ -114,6 +97,23 @@ export async function refreshExchangeRates(currency: Currency = DEFAULT_FIAT_CUR
 	}
 }
 
+
+
+// Get exchange rates (from cache if valid, otherwise fetch fresh)
+export async function getExchangeRates(currency: Currency): Promise<ExchangeRatesData | null> {
+	// Check cache first
+	const caches = get(exchangeRatesCaches);
+	const cache = caches.get(currency);
+	if (cache && isCacheValid(cache)) {
+		return cache.data;
+	}
+	else
+	{
+		return refreshExchangeRates(currency);
+	}
+}
+
+
 /**
  * Convert a cryptocurrency balance to fiat currency using cached exchange rates
  * 
@@ -121,25 +121,29 @@ export async function refreshExchangeRates(currency: Currency = DEFAULT_FIAT_CUR
  * @param fiatSymbol - Target fiat currency symbol (e.g., 'USD', 'EUR')
  * @returns Promise<IBalance | null> - The converted fiat balance or null if conversion fails
  * 
- * Uses cached exchange rates when available (1-minute cache per currency).
+ * Uses cached exchange rates when available.
  * Falls back to fresh API call if cache is stale or missing.
  */
-export async function getExchange(cryptoBalance: IBalance, fiatSymbol: Currency = DEFAULT_FIAT_CURRENCY): Promise<IBalance | null> {
+export function getExchange(
+	cryptoBalance: IBalance,
+	fiatSymbol: Currency,
+	rates: ExchangeRatesData | null
+
+): IBalance | null {
 	if (!cryptoBalance || (cryptoBalance.amount === null) || (cryptoBalance.amount === undefined)
 		|| !cryptoBalance.currency) {
 		console.debug('getExchange: Invalid crypto balance for conversion');
 		return null;
 	}
-
-	console.log('getExchange: Converting', cryptoBalance.amount, cryptoBalance.currency, 'to', fiatSymbol);
+	//console.log('getExchange: Converting', cryptoBalance.amount, cryptoBalance.currency, 'to', fiatSymbol);
 
 	try {
-		const rates = await getExchangeRates(fiatSymbol);
+
 		if (!rates) {
 			console.error('Failed to fetch exchange rates');
 			return null;
 		}
-		
+
 		const symbol = cryptoBalance.currency.toUpperCase();
 		console.log('getExchange: Looking up exchange rate for currency symbol:', symbol, 'Available rates:', Object.keys(rates.rates).slice(0, 3), '...');
 		const rate = rates.rates[symbol];
@@ -172,11 +176,11 @@ export async function getExchange(cryptoBalance: IBalance, fiatSymbol: Currency 
 }
 
 
-export async function balanceUpdate(crypto: IBalance)
+export function balanceUpdateSync(crypto: IBalance, fiatSymbol: Currency, rates: ExchangeRatesData): IBalanceWithFiat | null
 {
 	return {
 		crypto,
-		fiat: await getExchange(crypto),
+		fiat: getExchange(crypto, fiatSymbol, rates),
 		timestamp: new Date()
 	};
 }
