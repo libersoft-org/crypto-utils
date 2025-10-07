@@ -23,6 +23,8 @@
   "./tokens": "./src/tokens.ts",
   "./nfts": "./src/nfts.ts",
   "./currencies": "./src/currencies.ts",
+  "./fiat": "./src/fiat.ts",
+  "./address-validation": "./src/address-validation.ts",
   "./refresh": "./src/refresh.ts"
  },
  "scripts": {

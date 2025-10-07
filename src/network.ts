@@ -84,6 +84,22 @@ networks.subscribe((nets: INetwork[]) => {
 				nft.guid = getGuid();
 				modified = true;
 			}
+			// Backwards compatibility: migrate old nested format {guid, item: {contract_address, token_id}}
+			// to new flat format {guid, contract_address, token_id}
+			if ((nft as any).item && typeof (nft as any).item === 'object') {
+				const oldNft = nft as any;
+				if (oldNft.item.contract_address) {
+					nft.contract_address = oldNft.item.contract_address;
+					modified = true;
+				}
+				if (oldNft.item.token_id) {
+					nft.token_id = oldNft.item.token_id;
+					modified = true;
+				}
+				// Remove the old nested structure
+				delete oldNft.item;
+				modified = true;
+			}
 		}
 	}
 	if (modified) {

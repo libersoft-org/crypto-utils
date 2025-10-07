@@ -1,0 +1,183 @@
+/* Centralized fiat currency exchange rate management */
+
+import { writable, derived, get } from 'svelte/store';
+import type { IBalance } from './types';
+import { localStorageSharedStore } from './utils/svelte-shared-store.ts';
+
+// Types
+export type Currency = string;
+export type Rate = number;
+
+export const fiat = localStorageSharedStore<string>('fiat', 'USD');
+
+interface ExchangeRatesData {
+	currency: Currency;
+	rates: Record<Currency, Rate>;
+}
+
+interface ExchangeRatesCache {
+	data: ExchangeRatesData;
+	timestamp: number;
+}
+
+// Constants
+const EXCHANGE_RATES_CACHE_DURATION = 60000; // 1 minute cache
+const DEFAULT_FIAT_CURRENCY: Currency = 'USD';
+
+// Stores - separate cache per currency
+export const exchangeRatesCaches = writable<Record<Currency, ExchangeRatesCache>>({});
+export const isRefreshingExchangeRates = writable(false);
+
+// Get specific currency's cached rates
+export const getExchangeRatesForCurrency = (currency: Currency) => derived(
+	[exchangeRatesCaches],
+	([$exchangeRatesCaches]) => $exchangeRatesCaches[currency]?.data || null
+);
+
+// Check if cache is valid for a specific currency
+function isCacheValid(cache: ExchangeRatesCache | null): boolean {
+	if (!cache) return false;
+	return Date.now() - cache.timestamp < EXCHANGE_RATES_CACHE_DURATION;
+}
+
+// Fetch fresh exchange rates from API
+async function fetchExchangeRates(currency: Currency = DEFAULT_FIAT_CURRENCY): Promise<ExchangeRatesData | null> {
+	const url = `https://api.coinbase.com/v2/exchange-rates?currency=${currency}`;
+	try {
+		const response = await fetch(url);
+		if (!response.ok) throw new Error(`HTTP error, status: ${response.status}`);
+		const data = await response.json();
+		
+		// Convert string rates to numbers
+		const rates: Record<Currency, Rate> = {};
+		for (const [currencySymbol, rateString] of Object.entries(data.data.rates)) {
+			rates[currencySymbol] = Number(rateString);
+		}
+		
+		return {
+			currency: data.data.currency,
+			rates
+		};
+	} catch (error) {
+		console.error('Error fetching exchange rates:', error);
+		return null;
+	}
+}
+
+// Update cache for specific currency
+function updateCacheForCurrency(currency: Currency, data: ExchangeRatesData): void {
+	exchangeRatesCaches.update(caches => ({
+		...caches,
+		[currency]: {
+			data,
+			timestamp: Date.now()
+		}
+	}));
+}
+
+// Get exchange rates (from cache if valid, otherwise fetch fresh)
+export async function getExchangeRates(currency: Currency = DEFAULT_FIAT_CURRENCY): Promise<ExchangeRatesData | null> {
+	// Check cache first
+	const caches = get(exchangeRatesCaches);
+	const cache = caches[currency];
+	if (isCacheValid(cache)) {
+		return cache.data;
+	}
+
+	// Fetch fresh rates
+	isRefreshingExchangeRates.set(true);
+	try {
+		const rates = await fetchExchangeRates(currency);
+		if (rates) {
+			updateCacheForCurrency(currency, rates);
+		}
+		return rates;
+	} finally {
+		isRefreshingExchangeRates.set(false);
+	}
+}
+
+// Force refresh exchange rates for specific currency (ignore cache)
+export async function refreshExchangeRates(currency: Currency = DEFAULT_FIAT_CURRENCY): Promise<ExchangeRatesData | null> {
+	console.log('Force refreshing exchange rates for currency:', currency);
+	
+	isRefreshingExchangeRates.set(true);
+	try {
+		const rates = await fetchExchangeRates(currency);
+		if (rates) {
+			updateCacheForCurrency(currency, rates);
+			console.log('Exchange rates refreshed successfully for', currency);
+		}
+		return rates;
+	} finally {
+		isRefreshingExchangeRates.set(false);
+	}
+}
+
+/**
+ * Convert a cryptocurrency balance to fiat currency using cached exchange rates
+ * 
+ * @param cryptoBalance - The crypto balance to convert (amount, currency, decimals)
+ * @param fiatSymbol - Target fiat currency symbol (e.g., 'USD', 'EUR')
+ * @returns Promise<IBalance | null> - The converted fiat balance or null if conversion fails
+ * 
+ * Uses cached exchange rates when available (1-minute cache per currency).
+ * Falls back to fresh API call if cache is stale or missing.
+ */
+export async function getExchange(cryptoBalance: IBalance, fiatSymbol: Currency = DEFAULT_FIAT_CURRENCY): Promise<IBalance | null> {
+	if (!cryptoBalance || (cryptoBalance.amount === null) || (cryptoBalance.amount === undefined)
+		|| !cryptoBalance.currency) {
+		console.debug('getExchange: Invalid crypto balance for conversion');
+		return null;
+	}
+
+	console.log('getExchange: Converting', cryptoBalance.amount, cryptoBalance.currency, 'to', fiatSymbol);
+
+	try {
+		const rates = await getExchangeRates(fiatSymbol);
+		if (!rates) {
+			console.error('Failed to fetch exchange rates');
+			return null;
+		}
+		
+		const symbol = cryptoBalance.currency.toUpperCase();
+		console.log('getExchange: Looking up exchange rate for currency symbol:', symbol, 'Available rates:', Object.keys(rates.rates).slice(0, 3), '...');
+		const rate = rates.rates[symbol];
+		if (!rate) {
+			console.debug('getExchange: Exchange rate not found for currency:', symbol);
+			return null;
+		}
+		
+		// Convert exchange rate to BigInt with 18 decimal precision
+		// Example: if rate = 0.00045 (1 USD = 0.00045 ETH), then:
+		// rateBigInt = 450000000000000 (0.00045 * 1e18)
+		const rateBigInt = BigInt(Math.round(rate * 1e18));
+		
+		// Calculate fiat amount using cross-multiplication to avoid precision loss
+		// Formula: fiatAmount = cryptoAmount / exchangeRate
+		// We multiply crypto amount by 1e18 first, then divide by rateBigInt to maintain precision
+		// Example: if crypto = 2000000000000000000 (2 ETH) and rate = 0.00045:
+		// fiatAmount = (2000000000000000000 * 1e18) / 450000000000000 = 4444444444444444444 (~4444.44 USD)
+		const fiatAmount = (cryptoBalance.amount * BigInt(1e18)) / rateBigInt;
+		
+		return {
+			amount: fiatAmount,
+			currency: fiatSymbol,
+			decimals: 18
+		};
+	} catch (error) {
+		console.error('getExchange: Error while getting exchange rate:', error);
+		return null;
+	}
+}
+
+
+export async function balanceUpdate(crypto: IBalance)
+{
+	return {
+		crypto,
+		fiat: await getExchange(crypto),
+		timestamp: new Date()
+	};
+}
+

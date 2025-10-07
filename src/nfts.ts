@@ -336,7 +336,7 @@ export async function loadNFTTokenMetadata(nftItems: INftConf[]): Promise<void> 
 export async function loadNFTsData(nftItems: INftConf[]): Promise<void> {
 	if (!nftItems.length) return;
 	
-	console.log('Loading complete NFT data for', nftItems.length, 'items');
+	//console.log('Loading complete NFT data for', nftItems.length, 'items');
 	
 	const contractAddresses = [...new Set(nftItems.map(nft => nft.contract_address))];
 	

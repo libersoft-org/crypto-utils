@@ -7,6 +7,7 @@ import { provider } from './provider';
 import { refreshBalance } from './balance';
 import { refreshTokenBalance, loadAllTokenInfos, getTokensWithContracts } from './tokens';
 import { loadNFTsData } from './nfts';
+import { refreshExchangeRates } from './fiat';
 
 // Refresh interval in seconds
 const REFRESH_INTERVAL = 30;
@@ -16,8 +17,6 @@ let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 let refreshPromise: Promise<void> | null = null;
 let isRefreshEnabled = false;
 
-// Store to track if the main balance is currently being refreshed
-export const isRefreshingMainBalance = writable(false);
 
 // Refresh all token balances
 async function refreshAllTokenBalances() {
@@ -58,21 +57,21 @@ export async function refresh(): Promise<void> {
 			// Load token infos first (needed for balance display)
 			await loadAllTokenInfos();
 			
-			// Refresh all balances in parallel
+			// Refresh all data in parallel
 			await Promise.all([
 				// Native currency balance
 				(async () => {
-					isRefreshingMainBalance.set(true);
 					try {
 						await refreshBalance();
 					} finally {
-						isRefreshingMainBalance.set(false);
 					}
 				})(),
 				// Token balances
 				refreshAllTokenBalances(),
 				// NFT data
-				loadNFTsData(get(selectedNetwork)?.nfts || [])
+				loadNFTsData(get(selectedNetwork)?.nfts || []),
+				// Exchange rates (with separate loading indicator)
+				refreshExchangeRates('USD')
 			]);
 
 			// Schedule next refresh
@@ -121,7 +120,7 @@ export function setRefreshEnabled(enabled: boolean): void {
 
 // Initialize refresh system (call on app start)
 export function initializeRefreshSystem(): () => void {
-	console.log('Initializing refresh system');
+	//console.log('Initializing refresh system');
 	
 	// Watch for network/address changes and reset/refresh
 	let currentNetwork = get(selectedNetwork);

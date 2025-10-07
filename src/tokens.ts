@@ -8,6 +8,8 @@ import {
 } from './provider.ts';
 import { selectedNetwork } from './network.ts';
 import { selectedAddress } from './wallet.ts';
+import { getExchange } from './fiat.ts';
+import { isValidContractAddress } from './address-validation.ts';
 import {
 	executeMulticall,
 	multicall3Address,
@@ -105,7 +107,9 @@ export const tokensForDisplay = derived(
 	[tokens, tokenInfos, tokenBalances, loadingTokens, loadingTokenInfos],
 	([$tokens, $tokenInfos, $tokenBalances, $loadingTokens, $loadingTokenInfos]) => {
 		// Filter tokens that have contract addresses
-		const tokensWithContracts = $tokens.filter(token => token.contract_address);
+		const tokensWithContracts = $tokens.filter(token => 
+			token.contract_address && isValidContractAddress(token.contract_address)
+		);
 		
 		// Transform into display-ready data
 		return tokensWithContracts.map(t => {
@@ -159,7 +163,9 @@ function updateReactiveSet<T>(set: Set<T>, updater: (set: Set<T>) => void): Set<
  * @returns Array of tokens with valid contract addresses
  */
 export function getTokensWithContracts(): ITokenConf[] {
-	return get(tokens).filter(token => token.contract_address);
+	return get(tokens).filter(token => 
+		token.contract_address && isValidContractAddress(token.contract_address)
+	);
 }
 
 // Token balance management functions
@@ -186,7 +192,6 @@ export async function refreshTokenBalance(contractAddress: ContractAddress): Pro
 			};
 			
 			// Get fiat conversion
-			const { getExchange } = await import('./balance');
 			const fiatBalance = await getExchange(tokenBalance, 'USD');
 			
 			tokenBalances.update(map => updateReactiveMap(map, m => {
@@ -538,8 +543,10 @@ export async function getBatchTokenBalances(): Promise<Map<string, IBalance>> {
 		return result;
 	}
 
-	// Filter tokens that have contract addresses
-	const tokensWithAddresses = tokenList.filter(token => token.contract_address);
+	// Filter tokens that have valid contract addresses
+	const tokensWithAddresses = tokenList.filter(token => 
+		token.contract_address && isValidContractAddress(token.contract_address)
+	);
 
 	if (tokensWithAddresses.length === 0) return result;
 
