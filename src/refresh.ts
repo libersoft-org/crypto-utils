@@ -1,14 +1,13 @@
 /* Top-level module to manage loading and refreshing of all info and balance data */
 
-import { get, writable } from 'svelte/store';
+import { get } from 'svelte/store';
 import { selectedNetwork } from './network';
 import { selectedAddress } from './wallet';
 import { provider } from './provider';
-import { refreshBalance } from './balance';
+import { refreshBalance, nativeBalance } from './native';
 import { refreshTokenBalance, loadAllTokenInfos, getTokensWithContracts, tokenBalances } from './tokens';
 import { loadNFTsData } from './nfts';
-import { balanceUpdate, balanceUpdateSync, fiat, getExchange, getExchangeRates, refreshExchangeRates } from './fiat';
-import { nativeBalance } from './native.ts';
+import { balanceUpdateSync, fiat, getExchangeRates } from './fiat';
 
 // Refresh interval in seconds
 const REFRESH_INTERVAL = 30;
@@ -18,14 +17,12 @@ let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 let refreshPromise: Promise<void> | null = null;
 let isRefreshEnabled = false;
 
-
-
 fiat.subscribe(currency => updateAllFiats());
-
 
 async function updateAllFiats() {
 	const f = get(fiat);
 	const rates = await getExchangeRates(f);
+	if (!rates) return;
 
 	// sync part begins
 
@@ -109,10 +106,11 @@ export async function refresh(): Promise<void> {
 				// Token balances
 				refreshAllTokenBalances(),
 				// NFT data
-				loadNFTsData(get(selectedNetwork)?.nfts || []),
-				// Exchange rates (with separate loading indicator)
-				refreshExchangeRates('USD')
+				loadNFTsData(get(selectedNetwork)?.nfts || [])
 			]);
+
+			// Update fiat conversions for all balances
+			await updateAllFiats();
 
 			// Schedule next refresh
 			if (isRefreshEnabled) {

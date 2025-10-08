@@ -252,7 +252,6 @@ export function getSelectedRpcUrl(network: INetwork): string | undefined {
 	return network.rpcURLs?.[0];
 }
 
-
 export function generateUniqueNetworkName(baseName: string): string {
 	const existingNetworks = get(networks);
 	let counter = 1;
@@ -272,16 +271,6 @@ export function replaceAllNetworks(networksData: any[]): void {
 	networks.set(networksWithGuids);
 }
 
-export function addNetworkIfNotExists(network: any): boolean {
-	const existingNetworks = get(networks);
-	const exists = existingNetworks.find(n => n.name === network.name);
-	if (!exists) {
-		if (!network.guid) network.guid = getGuid();
-		networksAdd(network);
-		return true;
-	}
-	return false;
-}
 
 export function replaceExistingNetwork(networkToReplace: any): void {
 	networks.update(current => {
@@ -298,28 +287,18 @@ export function addNetworkWithUniqueName(network: any): void {
 	networksAdd(networkWithUniqueName);
 }
 
-export function hasNetworkWithName(name: string): boolean {
-	return get(networks).some(n => n.name === name);
-}
 
 export function addSingleNetwork(network: any): void {
 	if (!network.guid) network.guid = getGuid();
 	networksAdd(network);
 }
 
-export function findNetworkByName(name: string): any | undefined {
-	const existingNetworks = get(networks);
-	return existingNetworks.find(n => n.name === name);
-}
 
 export function findNetworkByGuid(guid: string): INetwork | undefined {
 	const existingNetworks = get(networks);
 	return existingNetworks.find(n => n.guid === guid);
 }
 
-export function checkIfNetworksExist(): boolean {
-	return get(networks).length > 0;
-}
 
 export async function checkRPCServer(server: IRPCServer): Promise<void> {
 	server.checking = true;

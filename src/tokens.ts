@@ -8,7 +8,6 @@ import {
 } from './provider.ts';
 import { selectedNetwork } from './network.ts';
 import { selectedAddress } from './wallet.ts';
-import { getExchange } from './fiat.ts';
 import { isValidContractAddress } from './address-validation.ts';
 import {
 	executeMulticall,
@@ -80,7 +79,7 @@ export const loadingTokenInfos = writable<Set<ContractAddress>>(new Set());
  * Store for configured tokens from the selected network
  * Simple accessor to selectedNetwork.tokens without transformation
  */
-export const tokens = derived([selectedNetwork], ([$selectedNetwork]) => {
+export const tokenConfs = derived([selectedNetwork], ([$selectedNetwork]) => {
 	return $selectedNetwork?.tokens || [];
 });
 
@@ -90,13 +89,11 @@ export const tokens = derived([selectedNetwork], ([$selectedNetwork]) => {
  * Combines token configuration with loaded data and loading states
  */
 export interface ITokenForDisplay {
-	token: ITokenConf;
+	conf: ITokenConf;
 	info: ITokenLoadedInfo | undefined;
 	balance: IBalanceWithFiat | undefined;
 	isLoadingInfo: boolean;
 	isLoadingBalance: boolean;
-	symbol: string;
-	name: string;
 }
 
 /**
@@ -104,10 +101,10 @@ export interface ITokenForDisplay {
  * Provides a reactive array of display-ready token data for UI components
  */
 export const tokensForDisplay = derived(
-	[tokens, tokenInfos, tokenBalances, loadingTokens, loadingTokenInfos],
-	([$tokens, $tokenInfos, $tokenBalances, $loadingTokens, $loadingTokenInfos]) => {
+	[tokenConfs, tokenInfos, tokenBalances, loadingTokens, loadingTokenInfos],
+	([$tokenConfs, $tokenInfos, $tokenBalances, $loadingTokens, $loadingTokenInfos]) => {
 		// Filter tokens that have contract addresses
-		const tokensWithContracts = $tokens.filter(token => 
+		const tokensWithContracts = $tokenConfs.filter(token => 
 			token.contract_address && isValidContractAddress(token.contract_address)
 		);
 		
@@ -122,13 +119,11 @@ export const tokensForDisplay = derived(
 			const isLoadingBalance = $loadingTokens.has(contractAddress);
 
 			return {
-				token: t,
+				conf: t,
 				info: tokenInfo,
 				balance: tokenBalance,
 				isLoadingInfo,
 				isLoadingBalance,
-				symbol: tokenInfo?.symbol || 'UNKNOWN',
-				name: tokenInfo?.name || 'Unknown Token',
 			} satisfies ITokenForDisplay;
 		}).filter(Boolean) as ITokenForDisplay[];
 	}
@@ -163,7 +158,7 @@ function updateReactiveSet<T>(set: Set<T>, updater: (set: Set<T>) => void): Set<
  * @returns Array of tokens with valid contract addresses
  */
 export function getTokensWithContracts(): ITokenConf[] {
-	return get(tokens).filter(token => 
+	return get(tokenConfs).filter(token => 
 		token.contract_address && isValidContractAddress(token.contract_address)
 	);
 }
@@ -191,13 +186,11 @@ export async function refreshTokenBalance(contractAddress: ContractAddress): Pro
 				decimals: amount.decimals
 			};
 			
-			// Get fiat conversion
-			const fiatBalance = await getExchange(tokenBalance, 'USD');
-			
+			// Store crypto balance only - fiat conversion will be handled by updateAllFiats()
 			tokenBalances.update(map => updateReactiveMap(map, m => {
 				m.set(contractAddress, {
 					crypto: tokenBalance,
-					fiat: fiatBalance,
+					fiat: null, // Will be updated by updateAllFiats()
 					timestamp: new Date()
 				});
 			}));
@@ -535,7 +528,7 @@ export async function getBatchTokenBalances(): Promise<Map<string, IBalance>> {
 	const p = get(provider);
 	const net = get(selectedNetwork);
 	const addr = get(selectedAddress);
-	const tokenList = get(tokens);
+	const tokenList = get(tokenConfs);
 	const result = new Map<string, IBalance>();
 
 	if (!net || !p || !addr) {

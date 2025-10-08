@@ -7,8 +7,11 @@ import { selectedAddress } from './wallet';
 import { provider } from './provider';
 import type { IBalance, IBalanceWithFiat } from './types';
 export type { IBalance };
-import { balanceUpdate, getExchange } from './fiat';
-import { nativeBalance } from './native';
+import { nativeBalance, refreshBalance, getBalance, isLoadingNativeBalance } from './native';
+
+// Re-exports for backwards compatibility with existing imports
+export { refreshBalance, getBalance };
+export { nativeBalance as balance, isLoadingNativeBalance as isLoadingBalance };
 
 
 

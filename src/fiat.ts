@@ -67,19 +67,20 @@ async function fetchExchangeRates(currency: Currency): Promise<ExchangeRatesData
 
 // Update cache for specific currency
 function updateCacheForCurrency(currency: Currency, data: ExchangeRatesData): void {
-	exchangeRatesCaches.update(caches => ({
-		...caches,
-		[currency]: {
+	exchangeRatesCaches.update(caches => {
+		const newCaches = new Map(caches);
+		newCaches.set(currency, {
 			data,
 			timestamp: Date.now()
-		}
-	}));
+		});
+		return newCaches;
+	});
 }
 
 
 
 // Force refresh exchange rates for specific currency (ignore cache)
-export async function refreshExchangeRates(currency: Currency): Promise<ExchangeRatesData | null> {
+async function refreshExchangeRates(currency: Currency): Promise<ExchangeRatesData | null> {
 	console.log('Force refreshing exchange rates for currency:', currency);
 
 	while (get(isRefreshingExchangeRates)) {await new Promise(resolve => setTimeout(resolve, 100));}
@@ -103,6 +104,7 @@ export async function refreshExchangeRates(currency: Currency): Promise<Exchange
 export async function getExchangeRates(currency: Currency): Promise<ExchangeRatesData | null> {
 	// Check cache first
 	const caches = get(exchangeRatesCaches);
+	console.log(`getExchangeRates: Checking caches ${JSON.stringify(caches)} for currency ${currency}`);
 	const cache = caches.get(currency);
 	if (cache && isCacheValid(cache)) {
 		return cache.data;
@@ -124,7 +126,7 @@ export async function getExchangeRates(currency: Currency): Promise<ExchangeRate
  * Uses cached exchange rates when available.
  * Falls back to fresh API call if cache is stale or missing.
  */
-export function getExchange(
+function getExchange(
 	cryptoBalance: IBalance,
 	fiatSymbol: Currency,
 	rates: ExchangeRatesData | null
@@ -176,7 +178,7 @@ export function getExchange(
 }
 
 
-export function balanceUpdateSync(crypto: IBalance, fiatSymbol: Currency, rates: ExchangeRatesData): IBalanceWithFiat | null
+export function balanceUpdateSync(crypto: IBalance, fiatSymbol: Currency, rates: ExchangeRatesData): IBalanceWithFiat
 {
 	return {
 		crypto,

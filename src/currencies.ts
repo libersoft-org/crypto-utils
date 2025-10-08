@@ -1,13 +1,13 @@
 import { derived } from 'svelte/store';
 import type { ICurrency } from './types';
 import { selectedNetwork } from './network';
-import { tokens, tokenInfos } from './tokens';
+import { tokenConfs, tokenInfos } from './tokens';
 
 /**
  * Store for available currencies (native + tokens) for the selected network
  * Combines native currency with configured tokens that have loaded info
  */
-export const currencies = derived([selectedNetwork, tokens, tokenInfos], ([$selectedNetwork, $tokens, $tokenInfos]) => {
+export const currencies = derived([selectedNetwork, tokenConfs, tokenInfos], ([$selectedNetwork, $tokenConfs, $tokenInfos]) => {
 	const currencyList: ICurrency[] = [];
 	
 	// Add native currency
@@ -19,8 +19,8 @@ export const currencies = derived([selectedNetwork, tokens, tokenInfos], ([$sele
 	}
 	
 	// Add tokens
-	if ($tokens && $tokens.length > 0) {
-		$tokens.forEach(token => {
+	if ($tokenConfs && $tokenConfs.length > 0) {
+		$tokenConfs.forEach(token => {
 			if (token.contract_address) {
 				const tokenInfo = $tokenInfos.get(token.contract_address);
 				const symbol = tokenInfo?.symbol || token.contract_address.slice(0, 8) + '...';

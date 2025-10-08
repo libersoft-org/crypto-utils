@@ -561,23 +561,3 @@ export async function doAddHardwareAddressLedger(w: any, addresses: any[], index
 	addresses.push(address);
 }
 
-/**
- * Check if device supports EIP-1559 transactions
- */
-export async function supportsEIP1559(): Promise<boolean> {
-	if (!currentTransport) return false;
-	try {
-		const eth = new EthApp(currentTransport);
-		const config = await eth.getAppConfiguration();
-		// Check if app version supports EIP-1559
-		// This is version-specific logic that depends on Ledger Ethereum app version
-		const version = config.version;
-		const [major, minor, patch] = version.split('.').map(Number);
-		// EIP-1559 support was added in version 1.9.0
-		if (major > 1 || (major === 1 && minor > 9) || (major === 1 && minor === 9 && patch >= 0)) return true;
-		return false;
-	} catch (error) {
-		console.error('Error checking EIP-1559 support:', error);
-		return false;
-	}
-}
