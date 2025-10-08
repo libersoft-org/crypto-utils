@@ -6,6 +6,7 @@ import { selectedNetwork } from './network';
 import { selectedAddress } from './wallet';
 import { provider } from './provider';
 import type { IBalance, IBalanceWithFiat } from './types';
+import { updateAllFiats } from './fiat';
 export type { IBalance };
 export let nativeBalance = writable<IBalanceWithFiat | null>(null);
 export let isLoadingNativeBalance = writable(false);
@@ -18,12 +19,14 @@ export async function refreshBalance() {
 	try {
 		const v = await getBalance();
 		if (v) {
-			// Store crypto balance only - fiat conversion will be handled by updateAllFiats()
+			// Store crypto balance only
 			nativeBalance.set({
 				crypto: v,
 				fiat: null, // Will be updated by updateAllFiats()
 				timestamp: new Date()
 			});
+			// Update fiat conversion after successful balance refresh
+			await updateAllFiats();
 		}
 	} finally {
 		isLoadingNativeBalance.set(false);

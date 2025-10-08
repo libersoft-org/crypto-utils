@@ -9,6 +9,7 @@ import {
 import { selectedNetwork } from './network.ts';
 import { selectedAddress } from './wallet.ts';
 import { isValidContractAddress } from './address-validation.ts';
+import { updateAllFiats } from './fiat.ts';
 import {
 	executeMulticall,
 	multicall3Address,
@@ -186,7 +187,7 @@ export async function refreshTokenBalance(contractAddress: ContractAddress): Pro
 				decimals: amount.decimals
 			};
 			
-			// Store crypto balance only - fiat conversion will be handled by updateAllFiats()
+			// Store crypto balance only
 			tokenBalances.update(map => updateReactiveMap(map, m => {
 				m.set(contractAddress, {
 					crypto: tokenBalance,
@@ -194,6 +195,9 @@ export async function refreshTokenBalance(contractAddress: ContractAddress): Pro
 					timestamp: new Date()
 				});
 			}));
+			
+			// Update fiat conversion after successful balance refresh
+			await updateAllFiats();
 		}
 	} catch (error) {
 		console.error(`Error refreshing token balance for ${contractAddress}:`, error);

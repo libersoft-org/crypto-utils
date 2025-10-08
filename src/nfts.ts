@@ -3,7 +3,10 @@ import { get, writable, derived } from 'svelte/store';
 // Removed circular import - this function is defined in this file
 import type { Guid, ContractAddress } from './types.ts';
 import { provider } from './provider.ts';
-import { nfts as nftStore, selectedNetwork } from './network.ts';
+import { nftConfs, selectedNetwork } from './network.ts';
+
+// Re-export for external use
+export { nftConfs };
 import { selectedAddress } from './wallet.ts';
 
 
@@ -20,6 +23,12 @@ export interface INftDef {
 /* items managed by user as part of network config */
 export interface INftConf extends INftDef {
 	guid: Guid;
+}
+
+// NFT-specific balance interface
+export interface INftBalance {
+	amount: number; // Number of NFTs owned (usually 1 for ERC-721, can be > 1 for ERC-1155)
+	timestamp: Date;
 }
 
 
@@ -46,8 +55,10 @@ interface INftLoadedInfo {
 // Stores
 export const nftCollectionInfos = writable<Map<ContractAddress, INftCollectionInfo | null>>(new Map());
 export const nftTokenMetadatas = writable<Map<Guid, INftLoadedInfo>>(new Map());
+export const nftBalances = writable<Map<Guid, INftBalance>>(new Map());
 export const loadingNftCollections = writable<Set<ContractAddress>>(new Set());
 export const loadingNftTokens = writable<Set<Guid>>(new Set());
+export const loadingNftBalances = writable<Set<Guid>>(new Set());
 
 
 
@@ -331,7 +342,22 @@ export async function loadNFTTokenMetadata(nftItems: INftConf[]): Promise<void> 
 }
 
 /**
- * Load both collection info and token metadata
+ * Load NFT balances for multiple NFT configurations
+ * @param nftItems - Array of configured NFTs to load balances for
+ */
+export async function loadNFTBalances(nftItems: INftConf[]): Promise<void> {
+	if (!nftItems.length) return;
+
+	console.log('Loading NFT balances for', nftItems.length, 'NFTs');
+
+	// Load balances in parallel - refreshNftBalance handles deduplication
+	await Promise.all(
+		nftItems.map(nft => refreshNftBalance(nft.guid))
+	);
+}
+
+/**
+ * Load both collection info, token metadata, and balances
  */
 export async function loadNFTsData(nftItems: INftConf[]): Promise<void> {
 	if (!nftItems.length) return;
@@ -342,7 +368,8 @@ export async function loadNFTsData(nftItems: INftConf[]): Promise<void> {
 	
 	await Promise.all([
 		loadNFTCollectionInfos(contractAddresses),
-		loadNFTTokenMetadata(nftItems)
+		loadNFTTokenMetadata(nftItems),
+		loadNFTBalances(nftItems)
 	]);
 }
 
@@ -400,29 +427,155 @@ async function fetchNFTMetadata(tokenURI: string): Promise<Partial<INftLoadedInf
 
 // Derived store for display-ready NFT data
 export interface INftForDisplay {
-	nft: INftConf;
+	conf: INftConf;
 	collectionInfo: INftCollectionInfo | null;
 	tokenMetadata: INftLoadedInfo | undefined;
+	balance: INftBalance | undefined;
 	isLoadingCollection: boolean;
+	isLoadingBalance: boolean;
 	displayName: string;
 }
 
 export const nftsForDisplay = derived(
-	[nftStore, nftCollectionInfos, nftTokenMetadatas, loadingNftCollections],
-	([$nfts, $nftCollectionInfos, $nftTokenMetadatas, $loadingNftCollections]) => {
-		return $nfts.map(nft => {
-			const collectionInfo = $nftCollectionInfos.get(nft.contract_address);
-			const tokenMetadata = $nftTokenMetadatas.get(nft.guid);
-			const isLoadingCollection = $loadingNftCollections.has(nft.contract_address);
+	[nftConfs, nftCollectionInfos, nftTokenMetadatas, nftBalances, loadingNftCollections, loadingNftBalances],
+	([$nftConfs, $nftCollectionInfos, $nftTokenMetadatas, $nftBalances, $loadingNftCollections, $loadingNftBalances]) => {
+		return $nftConfs.map(conf => {
+
+			const collectionInfo = $nftCollectionInfos.get(conf.contract_address);
+			const tokenMetadata = $nftTokenMetadatas.get(conf.guid);
+			const balance = $nftBalances.get(conf.guid);
+			const isLoadingCollection = $loadingNftCollections.has(conf.contract_address);
+			const isLoadingBalance = $loadingNftBalances.has(conf.guid);
 
 			return {
-				nft,
-				collectionInfo,
+				conf: conf,
 				tokenMetadata,
+				collectionInfo,
+				balance,
 				isLoadingCollection,
-				displayName: tokenMetadata?.name || collectionInfo?.name || 'NFT',
+				isLoadingBalance,
+				displayName: (tokenMetadata?.name || collectionInfo?.name || 'NFT') + (conf.token_id ? ` #${conf.token_id}` : ''),
 			} as INftForDisplay;
 		});
 	}
 );
+
+// Clean up old NFT data that's no longer configured
+function cleanupOldNftData(currentConfigs: INftConf[]) {
+	const currentGuids = new Set(currentConfigs.map(conf => conf.guid));
+	const currentContracts = new Set(currentConfigs.map(conf => conf.contract_address));
+	
+	// Clean up metadata and balances for removed NFTs
+	nftTokenMetadatas.update(map => {
+		const newMap = new Map();
+		for (const [guid, data] of map.entries()) {
+			if (currentGuids.has(guid)) {
+				newMap.set(guid, data);
+			}
+		}
+		return newMap;
+	});
+	
+	nftBalances.update(map => {
+		const newMap = new Map();
+		for (const [guid, data] of map.entries()) {
+			if (currentGuids.has(guid)) {
+				newMap.set(guid, data);
+			}
+		}
+		return newMap;
+	});
+	
+	// Clean up collection info for unused contracts
+	nftCollectionInfos.update(map => {
+		const newMap = new Map();
+		for (const [contract, data] of map.entries()) {
+			if (currentContracts.has(contract)) {
+				newMap.set(contract, data);
+			}
+		}
+		return newMap;
+	});
+}
+
+// Load NFT data when configurations change
+nftConfs.subscribe(async (configs) => {
+	cleanupOldNftData(configs);
+	if (configs.length > 0) {
+		await loadNFTsData(configs);
+	}
+});
+
+/**
+ * Refresh NFT balance for a specific NFT configuration
+ * @param guid - The GUID of the NFT configuration to refresh
+ */
+export async function refreshNftBalance(guid: Guid): Promise<void> {
+	// Skip if already loading
+	const currentlyLoading = get(loadingNftBalances);
+	if (currentlyLoading.has(guid)) {
+		return;
+	}
+
+	const nftConfigurations = get(nftConfs);
+	const configuredNft = nftConfigurations.find(nft => nft.guid === guid);
+	
+	if (!configuredNft) {
+		console.warn(`NFT configuration not found for GUID: ${guid}`);
+		return;
+	}
+
+	const p = get(provider);
+	const addr = get(selectedAddress);
+
+	if (!p || !addr) {
+		console.warn('Provider or address not available for refreshing NFT balance');
+		return;
+	}
+
+	// Mark as loading
+	loadingNftBalances.update(set => {
+		set.add(guid);
+		return set;
+	});
+
+	try {
+		let amount = 0;
+
+		if (configuredNft.token_id) {
+			// Try ERC-721 first
+			try {
+				const contract = new Contract(configuredNft.contract_address, erc721ABI, p);
+				const owner = await contract.ownerOf(configuredNft.token_id);
+				amount = owner.toLowerCase() === addr.address.toLowerCase() ? 1 : 0;
+			} catch {
+				// Try ERC-1155
+				try {
+					const contract = new Contract(configuredNft.contract_address, erc1155ABI, p);
+					const balance = await contract.balanceOf(addr.address, configuredNft.token_id);
+					amount = Number(balance);
+				} catch (error) {
+					console.warn(`Failed to get balance for NFT ${guid}:`, error);
+				}
+			}
+		}
+
+		// Update balance store
+		nftBalances.update(map => {
+			const newMap = new Map(map);
+			newMap.set(guid, {
+				amount,
+				timestamp: new Date()
+			});
+			return newMap;
+		});
+
+	} finally {
+		// Clean up loading state
+		loadingNftBalances.update(set => {
+			set.delete(guid);
+			return set;
+		});
+	}
+}
 

@@ -90,7 +90,7 @@ async function refreshExchangeRates(currency: Currency): Promise<ExchangeRatesDa
 		const rates = await fetchExchangeRates(currency);
 		if (rates) {
 			updateCacheForCurrency(currency, rates);
-			console.log('Exchange rates refreshed successfully for', currency);
+			//console.log('Exchange rates refreshed successfully for', currency);
 		}
 		return rates;
 	} finally {
@@ -104,7 +104,7 @@ async function refreshExchangeRates(currency: Currency): Promise<ExchangeRatesDa
 export async function getExchangeRates(currency: Currency): Promise<ExchangeRatesData | null> {
 	// Check cache first
 	const caches = get(exchangeRatesCaches);
-	console.log(`getExchangeRates: Checking caches ${JSON.stringify(caches)} for currency ${currency}`);
+	//console.log(`getExchangeRates: Checking caches ${JSON.stringify(caches)} for currency ${currency}`);
 	const cache = caches.get(currency);
 	if (cache && isCacheValid(cache)) {
 		return cache.data;
@@ -147,7 +147,7 @@ function getExchange(
 		}
 
 		const symbol = cryptoBalance.currency.toUpperCase();
-		console.log('getExchange: Looking up exchange rate for currency symbol:', symbol, 'Available rates:', Object.keys(rates.rates).slice(0, 3), '...');
+		//console.log('getExchange: Looking up exchange rate for currency symbol:', symbol, 'Available rates:', Object.keys(rates.rates).slice(0, 3), '...');
 		const rate = rates.rates[symbol];
 		if (!rate) {
 			console.debug('getExchange: Exchange rate not found for currency:', symbol);
@@ -185,5 +185,34 @@ export function balanceUpdateSync(crypto: IBalance, fiatSymbol: Currency, rates:
 		fiat: getExchange(crypto, fiatSymbol, rates),
 		timestamp: new Date()
 	};
+}
+
+export async function updateAllFiats() {
+	const f = get(fiat);
+	const rates = await getExchangeRates(f);
+	if (!rates) return;
+
+	// Update native balance fiat conversion
+	const { nativeBalance } = await import('./native');
+	const b = get(nativeBalance)?.crypto;
+	if (b) {
+		nativeBalance.set(balanceUpdateSync(b, f, rates));
+	}
+
+	// Update token balances fiat conversion  
+	const { tokenBalances } = await import('./tokens');
+	const token_balances = get(tokenBalances);
+	const updatedTokenBalances = new Map(token_balances);
+
+	for (const [key, value] of updatedTokenBalances.entries()) {
+		if (value?.crypto) {
+			updatedTokenBalances.set(
+				key,
+				balanceUpdateSync(value.crypto, f, rates)
+			);
+		}
+	}
+
+	tokenBalances.set(updatedTokenBalances);
 }
 

@@ -192,7 +192,7 @@ export function editToken(networkGuid: string, token: ITokenConf): void {
 }
 
 
-export let nfts = derived([selectedNetwork], ([$selectedNetwork]) => {
+export let nftConfs = derived([selectedNetwork], ([$selectedNetwork]) => {
 	return ($selectedNetwork?.nfts || []).map(nft => ({
 		guid: nft.guid,
 		contract_address: nft.contract_address,

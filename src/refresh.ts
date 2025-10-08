@@ -6,8 +6,8 @@ import { selectedAddress } from './wallet';
 import { provider } from './provider';
 import { refreshBalance, nativeBalance } from './native';
 import { refreshTokenBalance, loadAllTokenInfos, getTokensWithContracts, tokenBalances } from './tokens';
-import { loadNFTsData } from './nfts';
-import { balanceUpdateSync, fiat, getExchangeRates } from './fiat';
+import { loadNFTsData, nftConfs } from './nfts';
+import { balanceUpdateSync, fiat, getExchangeRates, updateAllFiats } from './fiat';
 
 // Refresh interval in seconds
 const REFRESH_INTERVAL = 30;
@@ -19,39 +19,6 @@ let isRefreshEnabled = false;
 
 fiat.subscribe(currency => updateAllFiats());
 
-async function updateAllFiats() {
-	const f = get(fiat);
-	const rates = await getExchangeRates(f);
-	if (!rates) return;
-
-	// sync part begins
-
-	// native balance
-
-	const b = get(nativeBalance)?.crypto;
-	if (b)
-	{
-		nativeBalance.set(balanceUpdateSync(b, f, rates));
-	}
-
-
-	// token balances
-
-	const token_balances = get(tokenBalances);
-	const updatedTokenBalances = new Map(token_balances);
-
-	for (const [key, value] of updatedTokenBalances.entries()) {
-	  if (value?.crypto) {
-	    updatedTokenBalances.set(
-	      key,
-	      balanceUpdateSync(value.crypto, f, rates)
-	    );
-	  }
-	}
-
-	tokenBalances.set(updatedTokenBalances);
-
-}
 
 
 
@@ -106,7 +73,7 @@ export async function refresh(): Promise<void> {
 				// Token balances
 				refreshAllTokenBalances(),
 				// NFT data
-				loadNFTsData(get(selectedNetwork)?.nfts || [])
+				loadNFTsData(get(nftConfs))
 			]);
 
 			// Update fiat conversions for all balances
