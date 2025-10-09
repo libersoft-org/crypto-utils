@@ -10,7 +10,7 @@ import { loadNFTsData, nftConfs } from './nfts';
 import { balanceUpdateSync, fiat, getExchangeRates, updateAllFiats } from './fiat';
 
 // Refresh interval in seconds
-const REFRESH_INTERVAL = 30;
+const REFRESH_INTERVAL = 300000;
 
 // Single timer for all refreshes
 let refreshTimer: ReturnType<typeof setTimeout> | null = null;

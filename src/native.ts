@@ -1,7 +1,6 @@
 /* cryptocurrency balance management for chain-native currency (e.g., ETH, BNB, MATIC) */
 
 import { get, writable } from 'svelte/store';
-import { formatUnits } from 'ethers';
 import { selectedNetwork } from './network';
 import { selectedAddress } from './wallet';
 import { provider } from './provider';
@@ -42,10 +41,10 @@ export async function getBalance(): Promise<IBalance | null> {
 		console.error('Network, provider, or address not set');
 		return null;
 	}
-	//console.log('Getting balance for:', addr.address);
+	console.log('Getting balance for:', addr.address);
 	try {
 		const balanceWei = await p.getBalance(addr.address);
-		//console.log('Balance fetched:', balanceWei, net.currency.symbol);
+		console.log('Balance fetched:', balanceWei, net.currency.symbol);
 		return {
 			amount: balanceWei,
 			currency: net.currency.symbol || 'Unknown',

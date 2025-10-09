@@ -118,12 +118,20 @@ networks.subscribe((value: INetwork[]) => {
 });
 
 function updateSelectedNetwork(selectedNetworkID: string | null, networks: INetwork[]): void {
+	console.log('updateSelectedNetwork...');
 	const r = networks.find(n => n.guid === selectedNetworkID);
-	if (r === get(selectedNetwork)) return;
-	/* TODO: check if this is needed
-	hasInitializedBalance = false;
-	*/
+	// Reset selectedNetwork if it's not found in the new list of networks
+	if (!r) {
+		console.log('selectedNetworkID not found in networks, resetting selectedNetwork');
+		selectedNetwork.set(undefined);
+		return;
+	}
+	// Reset selectedRpcUrl if it's not in the new list of rpcURLs
+	if (r.selectedRpcUrl && !r.rpcURLs?.includes(r.selectedRpcUrl)) {
+		r.selectedRpcUrl = undefined;
+	}
 	selectedNetwork.set(r);
+	console.log('selectedNetwork set to:', r);
 }
 
 export function addNetwork(net: INetwork): boolean {
@@ -518,6 +526,7 @@ export function reorderNetworks(reorderedNetworks: INetwork[]): void {
 }
 
 export function addNFT(networkGuid: string, contract_address: string, token_id: string): void {
+	console.log('addNFT...')
 	networks.update(nets => {
 		const net = nets.find(n => n.guid === networkGuid);
 		if (!net) return nets;
@@ -530,6 +539,7 @@ export function addNFT(networkGuid: string, contract_address: string, token_id: 
 		net.nfts.push(newNft);
 		return nets;
 	});
+	console.log('Added NFT to network', networkGuid, ':', contract_address, token_id);
 }
 
 export function deleteNFT(networkGuid: string, nftGuid: string): void {
