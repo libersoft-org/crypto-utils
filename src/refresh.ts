@@ -10,7 +10,7 @@ import { loadNFTsData, nftConfs } from './nfts';
 import { balanceUpdateSync, fiat, getExchangeRates, updateAllFiats } from './fiat';
 
 // Refresh interval in seconds
-const REFRESH_INTERVAL = 300000;
+const REFRESH_INTERVAL = 30000;
 
 // Single timer for all refreshes
 let refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -125,7 +125,7 @@ export function setRefreshEnabled(enabled: boolean): void {
 
 // Initialize refresh system (call on app start)
 export function initializeRefreshSystem(): () => void {
-	//console.log('Initializing refresh system');
+	console.log('Initializing refresh system');
 	
 	// Watch for network/address changes and reset/refresh
 	let currentNetwork = get(selectedNetwork);

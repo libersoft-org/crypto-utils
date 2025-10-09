@@ -64,7 +64,7 @@ function createProvider(url: string, chainId: number): JsonRpcProvider | WebSock
 }
 
 providerData.subscribe(({ network, rpcURL: currentRpcURL }) => {
-	console.log('providerData updated:', network, currentRpcURL);
+	//console.log('providerData updated:', network, currentRpcURL);
 	if (!network) {
 		status.set({ color: 'red', text: 'No network selected' });
 		availableRPCURLs.set([]);
@@ -87,14 +87,14 @@ providerData.subscribe(({ network, rpcURL: currentRpcURL }) => {
 
 	// Don't override RPC URL if one is already set and is valid for this network
 	if (currentRpcUrlValue && validURLs.includes(currentRpcUrlValue)) {
-		console.log('Keeping current RPC URL:', currentRpcUrlValue);
+		//console.log('Keeping current RPC URL:', currentRpcUrlValue);
 		return;
 	}
 
-	console.log('providerData.subscribe: Will override RPC URL. Current:', currentRpcUrlValue, 'Valid URLs:', validURLs);
+	//console.log('providerData.subscribe: Will override RPC URL. Current:', currentRpcUrlValue, 'Valid URLs:', validURLs);
 
 	const selectedUrl = getSelectedRpcUrl(network);
-	console.log('Selected RPC URL for network:', selectedUrl);
+	//console.log('Selected RPC URL for network:', selectedUrl);
 	if (validURLs.length > 0) {
 		const urlToUse = selectedUrl || validURLs[0];
 		console.log('Setting RPC URL to:', urlToUse);
@@ -132,7 +132,7 @@ function connectToURL(): void {
 	try {
 		const isWebSocket = isWebSocketUrl(currentRpcURL);
 		const connectionType = isWebSocket ? 'WebSocket' : 'HTTP';
-		console.log(`Connecting to ${connectionType} RPC:`, currentRpcURL);
+		//console.log(`Connecting to ${connectionType} RPC:`, currentRpcURL);
 		status.set({ color: 'orange', text: `Connecting via ${connectionType}...` });
 		const p = createProvider(currentRpcURL, net.chainID);
 		provider.set(p);

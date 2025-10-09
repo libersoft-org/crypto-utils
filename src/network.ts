@@ -109,6 +109,9 @@ networks.subscribe((nets: INetwork[]) => {
 	}
 });
 
+
+let oldSelectedNetwork: string = 'null';
+
 selectedNetworkID.subscribe((value: string | null) => {
 	updateSelectedNetwork(value, get(networks));
 });
@@ -118,20 +121,15 @@ networks.subscribe((value: INetwork[]) => {
 });
 
 function updateSelectedNetwork(selectedNetworkID: string | null, networks: INetwork[]): void {
-	console.log('updateSelectedNetwork...');
+	//console.log('updateSelectedNetwork...');
 	const r = networks.find(n => n.guid === selectedNetworkID);
-	// Reset selectedNetwork if it's not found in the new list of networks
-	if (!r) {
-		console.log('selectedNetworkID not found in networks, resetting selectedNetwork');
-		selectedNetwork.set(undefined);
+	const rs = JSON.stringify(r);
+	if (rs === oldSelectedNetwork) {
 		return;
 	}
-	// Reset selectedRpcUrl if it's not in the new list of rpcURLs
-	if (r.selectedRpcUrl && !r.rpcURLs?.includes(r.selectedRpcUrl)) {
-		r.selectedRpcUrl = undefined;
-	}
+	oldSelectedNetwork = rs;
 	selectedNetwork.set(r);
-	console.log('selectedNetwork set to:', r);
+	//console.log('selectedNetwork set to:', r);
 }
 
 export function addNetwork(net: INetwork): boolean {
@@ -198,15 +196,6 @@ export function editToken(networkGuid: string, token: ITokenConf): void {
 		});
 	});
 }
-
-
-export let nftConfs = derived([selectedNetwork], ([$selectedNetwork]) => {
-	return ($selectedNetwork?.nfts || []).map(nft => ({
-		guid: nft.guid,
-		contract_address: nft.contract_address,
-		token_id: nft.token_id,
-	}));
-});
 
 
 export function deleteToken(networkGuid: string, tokenGuid: string): void {

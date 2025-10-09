@@ -3,12 +3,18 @@ import { get, writable, derived } from 'svelte/store';
 // Removed circular import - this function is defined in this file
 import type { Guid, ContractAddress } from './types.ts';
 import { provider } from './provider.ts';
-import { nftConfs, selectedNetwork } from './network.ts';
-
-// Re-export for external use
-export { nftConfs };
+import { networks, selectedNetwork } from './network.ts';
 import { selectedAddress } from './wallet.ts';
 
+
+
+export let nftConfs = derived([selectedNetwork], ([$selectedNetwork]) => {
+	return ($selectedNetwork?.nfts || []).map(nft => ({
+		guid: nft.guid,
+		contract_address: nft.contract_address,
+		token_id: nft.token_id,
+	}));
+});
 
 
 
@@ -362,15 +368,18 @@ export async function loadNFTBalances(nftItems: INftConf[]): Promise<void> {
 export async function loadNFTsData(nftItems: INftConf[]): Promise<void> {
 	if (!nftItems.length) return;
 	
-	console.log('Loading complete NFT data for', nftItems.length, 'items');
-	
 	const contractAddresses = [...new Set(nftItems.map(nft => nft.contract_address))];
-	
-	await Promise.all([
-		loadNFTCollectionInfos(contractAddresses),
-		loadNFTTokenMetadata(nftItems),
-		loadNFTBalances(nftItems)
-	]);
+
+	console.log('Loading NFT data for', nftItems.length, 'items and ', contractAddresses.length, 'contract addresses');
+
+	// await Promise.all([
+	// 	loadNFTCollectionInfos(contractAddresses),
+	// 	loadNFTTokenMetadata(nftItems),
+	// 	loadNFTBalances(nftItems)
+	// ]);
+	await loadNFTCollectionInfos(contractAddresses);
+	await loadNFTTokenMetadata(nftItems);
+	await loadNFTBalances(nftItems);
 }
 
 
@@ -415,6 +424,7 @@ async function fetchNFTMetadata(tokenURI: string): Promise<Partial<INftLoadedInf
 			name: metadata.name,
 			description: metadata.description,
 			image: metadata.image,
+
 			animation_url: metadata.animation_url,
 			external_url: metadata.external_url,
 			attributes: metadata.attributes
@@ -541,7 +551,7 @@ export async function refreshNftBalance(guid: Guid): Promise<void> {
 	});
 
 	try {
-		let amount = 0;
+		let amount: number | null = null;
 
 		if (configuredNft.token_id) {
 			// Try ERC-721 first
@@ -557,19 +567,22 @@ export async function refreshNftBalance(guid: Guid): Promise<void> {
 					amount = Number(balance);
 				} catch (error) {
 					console.warn(`Failed to get balance for NFT ${guid}:`, error);
+					// Don't set amount, leave it as null to indicate failure
 				}
 			}
 		}
 
-		// Update balance store
-		nftBalances.update(map => {
-			const newMap = new Map(map);
-			newMap.set(guid, {
-				amount,
-				timestamp: new Date()
+		// Only update balance store if we successfully got a balance
+		if (amount !== null) {
+			nftBalances.update(map => {
+				const newMap = new Map(map);
+				newMap.set(guid, {
+					amount,
+					timestamp: new Date()
+				});
+				return newMap;
 			});
-			return newMap;
-		});
+		}
 
 	} finally {
 		// Clean up loading state
