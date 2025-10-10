@@ -2,12 +2,12 @@ import { get, writable, derived } from 'svelte/store';
 import { localStorageSharedStore } from './utils/svelte-shared-store';
 import { getGuid } from './utils/utils';
 import { defaultNetworks } from './default-networks';
-import type { ICurrency } from './types';
+import type { ICurrency, Guid } from './types';
 import type { ITokenConf } from './tokens';
 import type { INftConf } from './nfts';
 
 // Re-export types that UI components need
-export type { ICurrency, ITokenConf, INftConf };
+export type { ICurrency, ITokenConf, INftConf, Guid };
 import type { IRPCServer, INetworkStatus } from './provider';
 
 
@@ -26,7 +26,7 @@ export interface IDefaultNetwork {
 }
 
 export interface INetwork {
-	guid?: string;
+	guid?: Guid;
 	name: string;
 	chainID: number;
 	explorerURL?: string;
@@ -169,7 +169,7 @@ export function deleteNetwork(net: INetwork): void {
 	});
 }
 
-export function addToken(networkGuid: string, token: ITokenConf): void {
+export function addToken(networkGuid: Guid, token: ITokenConf): void {
 	networks.update(networks => {
 		return networks.map(network => {
 			if (network.guid === networkGuid) {
@@ -183,7 +183,7 @@ export function addToken(networkGuid: string, token: ITokenConf): void {
 	});
 }
 
-export function editToken(networkGuid: string, token: ITokenConf): void {
+export function editToken(networkGuid: Guid, token: ITokenConf): void {
 	networks.update(networks => {
 		return networks.map(network => {
 			if (network.guid === networkGuid) {
@@ -198,7 +198,7 @@ export function editToken(networkGuid: string, token: ITokenConf): void {
 }
 
 
-export function deleteToken(networkGuid: string, tokenGuid: string): void {
+export function deleteToken(networkGuid: Guid, tokenGuid: Guid): void {
 	networks.update(networks => {
 		return networks.map(network => {
 			if (network.guid === networkGuid) {
@@ -213,7 +213,7 @@ export function deleteToken(networkGuid: string, tokenGuid: string): void {
 }
 
 
-export function reorderTokens(networkGuid: string, reorderedTokens: ITokenConf[]): void {
+export function reorderTokens(networkGuid: Guid, reorderedTokens: ITokenConf[]): void {
 	networks.update(networks => {
 		return networks.map(network => {
 			if (network.guid === networkGuid) {
@@ -227,7 +227,7 @@ export function reorderTokens(networkGuid: string, reorderedTokens: ITokenConf[]
 	});
 }
 
-export function setSelectedRpcUrl(networkGuid: string, rpcUrl: string): void {
+export function setSelectedRpcUrl(networkGuid: Guid, rpcUrl: string): void {
 	networks.update(networks => {
 		return networks.map(network => {
 			if (network.guid === networkGuid) {
@@ -291,7 +291,7 @@ export function addSingleNetwork(network: any): void {
 }
 
 
-export function findNetworkByGuid(guid: string): INetwork | undefined {
+export function findNetworkByGuid(guid: Guid): INetwork | undefined {
 	const existingNetworks = get(networks);
 	return existingNetworks.find(n => n.guid === guid);
 }
@@ -514,7 +514,7 @@ export function reorderNetworks(reorderedNetworks: INetwork[]): void {
 	networks.set(reorderedNetworks);
 }
 
-export function addNFT(networkGuid: string, contract_address: string, token_id: string): void {
+export function addNFT(networkGuid: Guid, contract_address: string, token_id: string): void {
 	console.log('addNFT...')
 	networks.update(nets => {
 		const net = nets.find(n => n.guid === networkGuid);
@@ -531,7 +531,7 @@ export function addNFT(networkGuid: string, contract_address: string, token_id: 
 	console.log('Added NFT to network', networkGuid, ':', contract_address, token_id);
 }
 
-export function deleteNFT(networkGuid: string, nftGuid: string): void {
+export function deleteNFT(networkGuid: Guid, nftGuid: Guid): void {
 	networks.update(nets => {
 		const net = nets.find(n => n.guid === networkGuid);
 		if (!net?.nfts) return nets;
@@ -540,7 +540,7 @@ export function deleteNFT(networkGuid: string, nftGuid: string): void {
 	});
 }
 
-export function editNFT(networkGuid: string, nftGuid: string, contract_address: string, token_id: string): void {
+export function editNFT(networkGuid: Guid, nftGuid: Guid, contract_address: string, token_id: string): void {
 	networks.update(nets => {
 		const net = nets.find(n => n.guid === networkGuid);
 		if (!net?.nfts) return nets;
@@ -553,7 +553,7 @@ export function editNFT(networkGuid: string, nftGuid: string, contract_address: 
 	});
 }
 
-export function reorderNFTs(networkGuid: string, reorderedNFTs: INftConf[]): void {
+export function reorderNFTs(networkGuid: Guid, reorderedNFTs: INftConf[]): void {
 	networks.update(networks => {
 		return networks.map(network => {
 			if (network.guid === networkGuid) {

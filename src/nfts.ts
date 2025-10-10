@@ -191,7 +191,7 @@ export async function enumerateOwnedErc721Tokens(
 async function loadErc721Metadata(configuredNft: INftConf, provider: any, address: string): Promise<INftLoadedInfo | null> {
 	// ERC721 tracking requires specific token ID
 	if (!configuredNft.token_id) {
-		console.warn(`ERC721 NFT ${configuredNft.contract_address} requires token_id to be specified`);
+		console.warn(`loadErc721Metadata: ERC721 NFT ${configuredNft.contract_address} requires token_id to be specified`);
 		return null;
 	}
 	
@@ -201,11 +201,11 @@ async function loadErc721Metadata(configuredNft: INftConf, provider: any, addres
 	try {
 		const owner = await contract.ownerOf(configuredNft.token_id);
 		if (owner.toLowerCase() !== address.toLowerCase()) {
-			console.warn(`User ${address} does not own token ${configuredNft.token_id} from ${configuredNft.contract_address}`);
+			console.warn(`loadErc721Metadata: User ${address} does not own token ${configuredNft.token_id} from ${configuredNft.contract_address}`);
 			return null;
 		}
 	} catch (error) {
-		console.warn(`Token ${configuredNft.token_id} does not exist in contract ${configuredNft.contract_address}`);
+		console.warn(`loadErc721Metadata: Token ${configuredNft.token_id} does not exist in contract ${configuredNft.contract_address}`);
 		return null;
 	}
 	
@@ -550,8 +550,12 @@ export async function refreshNftBalance(guid: Guid): Promise<void> {
 		return set;
 	});
 
+	await new Promise(resolve => setTimeout(resolve, 8000));
+
 	try {
 		let amount: number | null = null;
+
+		console.log(`refreshNftBalance: Refreshing balance for NFT GUID ${guid} at contract ${configuredNft.contract_address} with token ID ${configuredNft.token_id || 'N/A'}`);
 
 		if (configuredNft.token_id) {
 			// Try ERC-721 first
@@ -559,9 +563,11 @@ export async function refreshNftBalance(guid: Guid): Promise<void> {
 				const contract = new Contract(configuredNft.contract_address, erc721ABI, p);
 				const owner = await contract.ownerOf(configuredNft.token_id);
 				amount = owner.toLowerCase() === addr.address.toLowerCase() ? 1 : 0;
+				console.log(`    ERC-721 success: User ${addr.address} owns token ${configuredNft.token_id}: ${amount}`);
 			} catch {
 				// Try ERC-1155
 				try {
+					console.log(`    Trying ERC-1155 balanceOf for token ID ${configuredNft.token_id}`);
 					const contract = new Contract(configuredNft.contract_address, erc1155ABI, p);
 					const balance = await contract.balanceOf(addr.address, configuredNft.token_id);
 					amount = Number(balance);
