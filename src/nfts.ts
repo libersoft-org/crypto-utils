@@ -2,7 +2,7 @@ import { formatUnits, Contract } from 'ethers';
 import { get, writable, derived } from 'svelte/store';
 // Removed circular import - this function is defined in this file
 import type { Guid, ContractAddress } from './types.ts';
-import { provider } from './provider.ts';
+import { provider, waitForProviderReady } from './provider.ts';
 import { networks, selectedNetwork } from './network.ts';
 import { selectedAddress } from './wallet.ts';
 
@@ -69,10 +69,71 @@ export const loadingNftBalances = writable<Set<Guid>>(new Set());
 
 
 // ERC-721 and ERC-1155 ABIs for NFT operations
+// Interface detection
+const erc165ABI = ['function supportsInterface(bytes4 interfaceId) view returns (bool)'];
+const ERC721_INTERFACE_ID = '0x80ac58cd';
+const ERC1155_INTERFACE_ID = '0xd9b67a26';
+
+// Contract ABIs
 const erc721ABI = ['function balanceOf(address owner) view returns (uint256)', 'function tokenOfOwnerByIndex(address owner, uint256 index) view returns (uint256)', 'function tokenURI(uint256 tokenId) view returns (string)', 'function ownerOf(uint256 tokenId) view returns (address)', 'function name() view returns (string)', 'function symbol() view returns (string)', 'function totalSupply() view returns (uint256)', 'function tokenByIndex(uint256 index) view returns (uint256)'];
 // Alternative minimal ABI for contracts that might not support full enumeration
 const erc721MinimalABI = ['function balanceOf(address owner) view returns (uint256)', 'function ownerOf(uint256 tokenId) view returns (address)', 'function tokenURI(uint256 tokenId) view returns (string)', 'function name() view returns (string)', 'function symbol() view returns (string)'];
 const erc1155ABI = ['function balanceOf(address account, uint256 id) view returns (uint256)', 'function uri(uint256 id) view returns (string)'];
+
+type NftStandard = 'ERC721' | 'ERC1155' | 'UNKNOWN';
+
+/**
+ * Detect which NFT standard a contract implements using ERC165
+ */
+async function detectNftStandard(contractAddress: string, provider: any): Promise<NftStandard> {
+	try {
+		const contract = new Contract(contractAddress, erc165ABI, provider);
+		
+		const [isERC721, isERC1155] = await Promise.all([
+			contract.supportsInterface(ERC721_INTERFACE_ID),
+			contract.supportsInterface(ERC1155_INTERFACE_ID)
+		]);
+		
+		if (isERC721) return 'ERC721';
+		if (isERC1155) return 'ERC1155';
+		return 'UNKNOWN';
+	} catch (error) {
+		console.warn(`ERC165 detection failed for ${contractAddress}:`, error);
+		return 'UNKNOWN';
+	}
+}
+
+/**
+ * Execute NFT operation with proper standard detection and fallback
+ */
+async function executeNftOperation<T>(
+	configuredNft: INftConf, 
+	provider: any, 
+	address: string,
+	erc721Fn: () => Promise<T>,
+	erc1155Fn: () => Promise<T>
+): Promise<T | null> {
+	const standard = await detectNftStandard(configuredNft.contract_address, provider);
+	
+	try {
+		switch (standard) {
+			case 'ERC721':
+				return await erc721Fn();
+			case 'ERC1155':
+				return await erc1155Fn();
+			case 'UNKNOWN':
+				// Fallback: try ERC721 first, then ERC1155
+				try {
+					return await erc721Fn();
+				} catch {
+					return await erc1155Fn();
+				}
+		}
+	} catch (error) {
+		console.warn(`Failed NFT operation for ${standard} contract ${configuredNft.contract_address}:`, error);
+		return null;
+	}
+}
 
 
 
@@ -99,6 +160,8 @@ export async function loadNFTCollectionInfos(contractAddresses: string[]): Promi
 		contractsToLoad.forEach(addr => set.add(addr));
 		return set;
 	});
+
+	await waitForProviderReady();
 
 	const p = get(provider);
 	if (!p) {
@@ -180,6 +243,42 @@ export async function enumerateOwnedErc721Tokens(
 }
 
 /**
+ * Get ERC721 NFT balance for a specific token
+ */
+async function getErc721Balance(configuredNft: INftConf, provider: any, address: string): Promise<number> {
+	if (!configuredNft.token_id) return 0;
+	
+	const contract = new Contract(configuredNft.contract_address, erc721ABI, provider);
+	const owner = await contract.ownerOf(configuredNft.token_id);
+	return owner.toLowerCase() === address.toLowerCase() ? 1 : 0;
+}
+
+/**
+ * Get ERC1155 NFT balance for a specific token
+ */
+async function getErc1155Balance(configuredNft: INftConf, provider: any, address: string): Promise<number> {
+	if (!configuredNft.token_id) return 0;
+	
+	const contract = new Contract(configuredNft.contract_address, erc1155ABI, provider);
+	const balance = await contract.balanceOf(address, configuredNft.token_id);
+	return Number(balance);
+}
+
+/**
+ * Create NFT metadata object from fetched metadata and token ID
+ */
+function createNftMetadataObject(metadata: any, tokenId: string, defaultName: string): INftLoadedInfo {
+	return {
+		name: metadata.name || defaultName,
+		description: metadata.description,
+		image: metadata.image,
+		animation_url: metadata.animation_url,
+		external_url: metadata.external_url,
+		attributes: metadata.attributes
+	};
+}
+
+/**
  * Load ERC721 NFT metadata for a specific configured NFT
  * Requires token_id to be specified - no fallback to arbitrary tokens
  * 
@@ -196,30 +295,18 @@ async function loadErc721Metadata(configuredNft: INftConf, provider: any, addres
 	}
 	
 	const contract = new Contract(configuredNft.contract_address, erc721ABI, provider);
-	
-	// Verify user owns this specific token
-	try {
-		const owner = await contract.ownerOf(configuredNft.token_id);
-		if (owner.toLowerCase() !== address.toLowerCase()) {
-			console.warn(`loadErc721Metadata: User ${address} does not own token ${configuredNft.token_id} from ${configuredNft.contract_address}`);
-			return null;
-		}
-	} catch (error) {
-		console.warn(`loadErc721Metadata: Token ${configuredNft.token_id} does not exist in contract ${configuredNft.contract_address}`);
-		return null;
-	}
-	
-	// User owns this specific token - get its metadata
 	const tokenURI = await contract.tokenURI(configuredNft.token_id);
 	const metadata = tokenURI ? await fetchNFTMetadata(tokenURI) : {};
-	return {
-		name: metadata.name || `NFT #${configuredNft.token_id}`,
-		description: metadata.description,
-		image: metadata.image,
-		animation_url: metadata.animation_url,
-		external_url: metadata.external_url,
-		attributes: metadata.attributes
-	};
+	
+	return createNftMetadataObject(metadata, configuredNft.token_id, `NFT #${configuredNft.token_id}`);
+}
+
+/**
+ * Process ERC1155 URI template by replacing {id} placeholder with token ID
+ */
+function processErc1155Uri(uriTemplate: string, tokenId: string): string {
+	// Replace {id} with the decimal token ID number
+	return uriTemplate.replace('{id}', tokenId);
 }
 
 /**
@@ -231,27 +318,21 @@ async function loadErc721Metadata(configuredNft: INftConf, provider: any, addres
  * @param address - User's wallet address to check balance
  * @returns NFT metadata if balance > 0, null if no balance or no token_id
  */
-async function loadErc1155Metadata(configuredNft: INftConf, provider: any, address: string): Promise<INftLoadedInfo | null> {
+async function loadErc1155Metadata(configuredNft: INftConf, provider, address): Promise<INftLoadedInfo | null> {
 	// ERC1155 requires specific token ID - can't enumerate like ERC721
 	if (!configuredNft.token_id) return null;
-	
+
 	const contract = new Contract(configuredNft.contract_address, erc1155ABI, provider);
+	const uriTemplate = await contract.uri(configuredNft.token_id);
+	console.log(`loadErc1155Metadata: URI template for token ID ${configuredNft.token_id} is ${uriTemplate}`);
 	
-	// Check balance for this specific token ID
-	const balance = Number(await contract.balanceOf(address, configuredNft.token_id));
-	if (balance === 0) return null;
+	// Replace {id} placeholder with actual token ID in hex format
+	const tokenURI = processErc1155Uri(uriTemplate, configuredNft.token_id);
+	console.log(`loadErc1155Metadata: processed URI is ${tokenURI}`);
 	
-	// User has this token - get its metadata URI
-	const tokenURI = await contract.uri(configuredNft.token_id);
 	const metadata = tokenURI ? await fetchNFTMetadata(tokenURI) : {};
-	return {
-		name: metadata.name || `Token #${configuredNft.token_id}`,
-		description: metadata.description,
-		image: metadata.image,
-		animation_url: metadata.animation_url,
-		external_url: metadata.external_url,
-		attributes: metadata.attributes
-	};
+	
+	return createNftMetadataObject(metadata, configuredNft.token_id, `Token #${configuredNft.token_id}`);
 }
 
 /**
@@ -264,21 +345,15 @@ async function loadErc1155Metadata(configuredNft: INftConf, provider: any, addre
  * @returns NFT metadata if found and owned, null otherwise
  */
 async function loadSingleNftMetadata(configuredNft: INftConf, provider: any, address: string): Promise<INftLoadedInfo | null> {
-	try {
-		// Try ERC721 first (most common NFT standard)
-		const erc721Metadata = await loadErc721Metadata(configuredNft, provider, address);
-		if (erc721Metadata) return erc721Metadata;
-	} catch (erc721Error) {
-		// ERC721 failed - contract might be ERC1155 or have different interface
-		try {
-			const erc1155Metadata = await loadErc1155Metadata(configuredNft, provider, address);
-			if (erc1155Metadata) return erc1155Metadata;
-		} catch (erc1155Error) {
-			console.warn(`Contract ${configuredNft.contract_address} is neither ERC721 nor ERC1155 compatible`);
-		}
-	}
+	await waitForProviderReady();
 	
-	return null;
+	return await executeNftOperation(
+		configuredNft,
+		provider,
+		address,
+		() => loadErc721Metadata(configuredNft, provider, address),
+		() => loadErc1155Metadata(configuredNft, provider, address)
+	);
 }
 
 /**
@@ -307,6 +382,8 @@ export async function loadNFTTokenMetadata(nftItems: INftConf[]): Promise<void> 
 		tokensToLoad.forEach(nft => set.add(nft.guid));
 		return set;
 	});
+
+	await waitForProviderReady();
 
 	// Get provider and user address for blockchain calls
 	const p = get(provider);
@@ -354,6 +431,8 @@ export async function loadNFTTokenMetadata(nftItems: INftConf[]): Promise<void> 
 export async function loadNFTBalances(nftItems: INftConf[]): Promise<void> {
 	if (!nftItems.length) return;
 
+	await waitForProviderReady();
+
 	console.log('Loading NFT balances for', nftItems.length, 'NFTs');
 
 	// Load balances in parallel - refreshNftBalance handles deduplication
@@ -370,6 +449,9 @@ export async function loadNFTsData(nftItems: INftConf[]): Promise<void> {
 	
 	const contractAddresses = [...new Set(nftItems.map(nft => nft.contract_address))];
 
+
+	await waitForProviderReady();
+
 	console.log('Loading NFT data for', nftItems.length, 'items and ', contractAddresses.length, 'contract addresses');
 
 	// await Promise.all([
@@ -378,7 +460,9 @@ export async function loadNFTsData(nftItems: INftConf[]): Promise<void> {
 	// 	loadNFTBalances(nftItems)
 	// ]);
 	await loadNFTCollectionInfos(contractAddresses);
+	await waitForProviderReady();
 	await loadNFTTokenMetadata(nftItems);
+	await waitForProviderReady();
 	await loadNFTBalances(nftItems);
 }
 
@@ -550,7 +634,7 @@ export async function refreshNftBalance(guid: Guid): Promise<void> {
 		return set;
 	});
 
-	await new Promise(resolve => setTimeout(resolve, 8000));
+	await waitForProviderReady();
 
 	try {
 		let amount: number | null = null;
@@ -558,23 +642,16 @@ export async function refreshNftBalance(guid: Guid): Promise<void> {
 		console.log(`refreshNftBalance: Refreshing balance for NFT GUID ${guid} at contract ${configuredNft.contract_address} with token ID ${configuredNft.token_id || 'N/A'}`);
 
 		if (configuredNft.token_id) {
-			// Try ERC-721 first
-			try {
-				const contract = new Contract(configuredNft.contract_address, erc721ABI, p);
-				const owner = await contract.ownerOf(configuredNft.token_id);
-				amount = owner.toLowerCase() === addr.address.toLowerCase() ? 1 : 0;
-				console.log(`    ERC-721 success: User ${addr.address} owns token ${configuredNft.token_id}: ${amount}`);
-			} catch {
-				// Try ERC-1155
-				try {
-					console.log(`    Trying ERC-1155 balanceOf for token ID ${configuredNft.token_id}`);
-					const contract = new Contract(configuredNft.contract_address, erc1155ABI, p);
-					const balance = await contract.balanceOf(addr.address, configuredNft.token_id);
-					amount = Number(balance);
-				} catch (error) {
-					console.warn(`Failed to get balance for NFT ${guid}:`, error);
-					// Don't set amount, leave it as null to indicate failure
-				}
+			amount = await executeNftOperation(
+				configuredNft,
+				p,
+				addr.address,
+				() => getErc721Balance(configuredNft, p, addr.address),
+				() => getErc1155Balance(configuredNft, p, addr.address)
+			);
+			
+			if (amount !== null) {
+				console.log(`    Balance success: User ${addr.address} owns ${amount} of token ${configuredNft.token_id}`);
 			}
 		}
 

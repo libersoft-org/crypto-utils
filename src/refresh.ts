@@ -78,19 +78,14 @@ export async function refresh(): Promise<void> {
 
 			// Update fiat conversions for all balances
 			await updateAllFiats();
-
-			// Schedule next refresh
-			if (isRefreshEnabled) {
-				refreshTimer = setTimeout(refresh, REFRESH_INTERVAL * 1000);
-			}
-
 		} catch (error) {
 			console.error('Error during refresh:', error);
-			// Schedule retry on error
-			if (isRefreshEnabled) {
-				refreshTimer = setTimeout(refresh, REFRESH_INTERVAL * 1000);
-			}
 		}
+
+		if (isRefreshEnabled) {
+			refreshTimer = setTimeout(refresh, REFRESH_INTERVAL * 1000);
+		}
+
 	})();
 
 	await refreshPromise;

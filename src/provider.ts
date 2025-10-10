@@ -47,6 +47,31 @@ export function isWebSocketUrl(url: string): boolean {
 	return url.startsWith('ws://') || url.startsWith('wss://');
 }
 
+/**
+ * Wait for provider to be ready before making blockchain calls
+ * @returns Promise that resolves when provider status is 'green' (connected)
+ */
+export async function waitForProviderReady(): Promise<void> {
+
+	await new Promise(resolve => setTimeout(resolve, 5000));
+
+	const currentStatus = get(status);
+	if (currentStatus.color === 'green') {
+		return; // Already connected
+	}
+	
+	console.log('Waiting for provider to be ready...');
+	return new Promise((resolve) => {
+		const unsubscribe = status.subscribe((currentStatus) => {
+			if (currentStatus.color === 'green') {
+				console.log('Provider is ready!');
+				unsubscribe();
+				resolve();
+			}
+		});
+	});
+}
+
 export function isValidWebSocketUrl(url: string): boolean {
 	try {
 		const parsed = new URL(url);
