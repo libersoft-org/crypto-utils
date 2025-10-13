@@ -56,15 +56,84 @@ interface INftLoadedInfo {
 }
 
 
+// Derived store for display-ready NFT data
+export interface INftForDisplay {
+	conf: INftConf;
+	collectionInfo: INftCollectionInfo | null;
+	tokenMetadata: INftLoadedInfo | undefined;
+	balance: INftBalance | undefined;
+	isLoadingCollection: boolean;
+	isLoadingBalance: boolean;
+	displayName: string;
+}
 
 
 // Stores
 export const nftCollectionInfos = writable<Map<ContractAddress, INftCollectionInfo | null>>(new Map());
 export const nftTokenMetadatas = writable<Map<Guid, INftLoadedInfo>>(new Map());
 export const nftBalances = writable<Map<Guid, INftBalance>>(new Map());
+
 export const loadingNftCollections = writable<Set<ContractAddress>>(new Set());
 export const loadingNftTokens = writable<Set<Guid>>(new Set());
 export const loadingNftBalances = writable<Set<Guid>>(new Set());
+
+const wasEverLoadingNftCollections = writable<Set<ContractAddress>>(new Set());
+const wasEverLoadingNftTokens = writable<Set<Guid>>(new Set());
+const wasEverLoadingNftBalances = writable<Set<Guid>>(new Set());
+
+
+export const nftsForDisplay = derived(
+	[
+		nftConfs,
+		nftCollectionInfos,
+		nftTokenMetadatas,
+		nftBalances,
+		loadingNftCollections,
+		loadingNftTokens,
+		loadingNftBalances,
+		wasEverLoadingNftCollections,
+		wasEverLoadingNftTokens,
+		wasEverLoadingNftBalances,
+
+	],
+	([
+		$nftConfs,
+		$nftCollectionInfos,
+		$nftTokenMetadatas,
+		$nftBalances,
+		$loadingNftCollections,
+		$loadingNftTokens,
+		$loadingNftBalances,
+		$wasEverLoadingNftCollections,
+		$wasEverLoadingNftTokens,
+		$wasEverLoadingNftBalances,
+
+	 ]) => {
+		return $nftConfs.map(conf => {
+
+			const collectionInfo = $nftCollectionInfos.get(conf.contract_address);
+			const tokenMetadata = $nftTokenMetadatas.get(conf.guid);
+			const balance = $nftBalances.get(conf.guid);
+
+			const isLoadingCollection = $loadingNftCollections.has(conf.contract_address);
+			const isLoadingToken = $loadingNftTokens.has(conf.guid);
+			const isLoadingBalance = $loadingNftBalances.has(conf.guid);
+
+			return {
+				conf: conf,
+				tokenMetadata,
+				collectionInfo,
+				balance,
+
+				isLoadingCollection: isLoadingCollection || !$wasEverLoadingNftCollections.has(conf.contract_address),
+				isLoadingToken: isLoadingToken || !$wasEverLoadingNftTokens.has(conf.guid),
+				isLoadingBalance: isLoadingBalance || !$wasEverLoadingNftBalances.has(conf.guid),
+
+				displayName: (tokenMetadata?.name || collectionInfo?.name || 'NFT') + (conf.token_id ? ` #${conf.token_id}` : ''),
+			} as INftForDisplay;
+		});
+	}
+);
 
 
 
@@ -157,6 +226,10 @@ export async function loadNFTCollectionInfos(contractAddresses: string[]): Promi
 
 	// Mark as loading
 	loadingNftCollections.update(set => {
+		contractsToLoad.forEach(addr => set.add(addr));
+		return set;
+	});
+	wasEverLoadingNftCollections.update(set => {
 		contractsToLoad.forEach(addr => set.add(addr));
 		return set;
 	});
@@ -382,6 +455,10 @@ export async function loadNFTTokenMetadata(nftItems: INftConf[]): Promise<void> 
 		tokensToLoad.forEach(nft => set.add(nft.guid));
 		return set;
 	});
+	wasEverLoadingNftTokens.update(set => {
+		tokensToLoad.forEach(nft => set.add(nft.guid));
+		return set;
+	});
 
 	await waitForProviderReady();
 
@@ -406,6 +483,8 @@ export async function loadNFTTokenMetadata(nftItems: INftConf[]): Promise<void> 
 			return metadata ? { guid: configuredNft.guid, metadata } : null;
 		})
 	);
+
+	console.log('Finished loading NFT metadata: ', results);
 
 	// Update the metadata store with successful results
 	nftTokenMetadatas.update(map => {
@@ -460,9 +539,7 @@ export async function loadNFTsData(nftItems: INftConf[]): Promise<void> {
 	// 	loadNFTBalances(nftItems)
 	// ]);
 	await loadNFTCollectionInfos(contractAddresses);
-	await waitForProviderReady();
 	await loadNFTTokenMetadata(nftItems);
-	await waitForProviderReady();
 	await loadNFTBalances(nftItems);
 }
 
@@ -480,7 +557,7 @@ async function fetchNFTMetadata(tokenURI: string): Promise<Partial<INftLoadedInf
 
 		// Handle IPFS URLs - remove multiple ipfs:// or ipfs/ prefixes
 		if (tokenURI.startsWith('ipfs://')) {
-			tokenURI = tokenURI.replace('ipfs://', 'https://ipfs.io/ipfs/');
+			tokenURI = tokenURI.replace('ipfs://', 'https://dweb.link/ipfs/');
 		}
 		// Handle case where URI already contains ipfs/ but we added another one - fixme
 		tokenURI = tokenURI.replace('ipfs/ipfs/', 'ipfs/');
@@ -497,9 +574,9 @@ async function fetchNFTMetadata(tokenURI: string): Promise<Partial<INftLoadedInf
 
 		// Handle IPFS URLs in image field with the same logic
 		if (metadata.image && metadata.image.startsWith('ipfs://')) {
-			metadata.image = metadata.image.replace('ipfs://', 'https://ipfs.io/ipfs/');
+			metadata.image = metadata.image.replace('ipfs://', 'https://dweb.link/ipfs/');
 			// Fix double ipfs/ in image URL too
-			metadata.image = metadata.image.replace('ipfs/ipfs/', 'ipfs/');
+			//metadata.image = metadata.image.replace('/ipfs/ipfs/', '/ipfs/');
 		}
 
 		console.log(`    📋 Processed image URL:`, metadata.image);
@@ -519,40 +596,6 @@ async function fetchNFTMetadata(tokenURI: string): Promise<Partial<INftLoadedInf
 	}
 }
 
-// Derived store for display-ready NFT data
-export interface INftForDisplay {
-	conf: INftConf;
-	collectionInfo: INftCollectionInfo | null;
-	tokenMetadata: INftLoadedInfo | undefined;
-	balance: INftBalance | undefined;
-	isLoadingCollection: boolean;
-	isLoadingBalance: boolean;
-	displayName: string;
-}
-
-export const nftsForDisplay = derived(
-	[nftConfs, nftCollectionInfos, nftTokenMetadatas, nftBalances, loadingNftCollections, loadingNftBalances],
-	([$nftConfs, $nftCollectionInfos, $nftTokenMetadatas, $nftBalances, $loadingNftCollections, $loadingNftBalances]) => {
-		return $nftConfs.map(conf => {
-
-			const collectionInfo = $nftCollectionInfos.get(conf.contract_address);
-			const tokenMetadata = $nftTokenMetadatas.get(conf.guid);
-			const balance = $nftBalances.get(conf.guid);
-			const isLoadingCollection = $loadingNftCollections.has(conf.contract_address);
-			const isLoadingBalance = $loadingNftBalances.has(conf.guid);
-
-			return {
-				conf: conf,
-				tokenMetadata,
-				collectionInfo,
-				balance,
-				isLoadingCollection,
-				isLoadingBalance,
-				displayName: (tokenMetadata?.name || collectionInfo?.name || 'NFT') + (conf.token_id ? ` #${conf.token_id}` : ''),
-			} as INftForDisplay;
-		});
-	}
-);
 
 // Clean up old NFT data that's no longer configured
 function cleanupOldNftData(currentConfigs: INftConf[]) {
@@ -616,7 +659,7 @@ export async function refreshNftBalance(guid: Guid): Promise<void> {
 	const configuredNft = nftConfigurations.find(nft => nft.guid === guid);
 	
 	if (!configuredNft) {
-		console.warn(`NFT configuration not found for GUID: ${guid}`);
+		console.debug(`NFT configuration not found for GUID: ${guid} (just deleted?)`);
 		return;
 	}
 
@@ -630,6 +673,10 @@ export async function refreshNftBalance(guid: Guid): Promise<void> {
 
 	// Mark as loading
 	loadingNftBalances.update(set => {
+		set.add(guid);
+		return set;
+	});
+	wasEverLoadingNftBalances.update(set => {
 		set.add(guid);
 		return set;
 	});

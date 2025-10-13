@@ -2,6 +2,11 @@ import { get, writable, type Writable } from 'svelte/store';
 import { JsonRpcProvider, WebSocketProvider } from 'ethers';
 import { selectedNetwork, getSelectedRpcUrl, setSelectedRpcUrl } from './network';
 import { derivedWithEquals } from './utils/derivedWithEquals';
+import { createRateLimitedProvider, RateLimitedJsonRpcProvider, RateLimitedWebSocketProvider } from './rate-limited-providers';
+
+// Re-export rate-limited provider classes and utilities
+export { RateLimitedJsonRpcProvider, RateLimitedWebSocketProvider, createRateLimitedProvider } from './rate-limited-providers';
+export { RateLimiter } from './rate-limiter';
 
 
 
@@ -26,7 +31,7 @@ export interface INetworkStatus {
 
 export const status = writable<INetworkStatus>({ color: 'red', text: 'No connection' });
 export const rpcURL = writable<string | null>(null);
-export const provider: Writable<JsonRpcProvider | WebSocketProvider | null> = writable<JsonRpcProvider | WebSocketProvider | null>(null);
+export const provider: Writable<RateLimitedJsonRpcProvider | RateLimitedWebSocketProvider | null> = writable<RateLimitedJsonRpcProvider | RateLimitedWebSocketProvider | null>(null);
 export const availableRPCURLs = writable<string[]>([]);
 let reconnectionTimer: ReturnType<typeof setTimeout> | undefined;
 let isManualRpcSelection = false; // Flag to prevent automatic RPC overrides
@@ -53,7 +58,7 @@ export function isWebSocketUrl(url: string): boolean {
  */
 export async function waitForProviderReady(): Promise<void> {
 
-	await new Promise(resolve => setTimeout(resolve, 5000));
+	//await new Promise(resolve => setTimeout(resolve, 5000));
 
 	const currentStatus = get(status);
 	if (currentStatus.color === 'green') {
@@ -81,11 +86,13 @@ export function isValidWebSocketUrl(url: string): boolean {
 	}
 }
 
-function createProvider(url: string, chainId: number): JsonRpcProvider | WebSocketProvider {
+function createProvider(url: string, chainId: number): RateLimitedJsonRpcProvider | RateLimitedWebSocketProvider {
 	if (isWebSocketUrl(url)) {
 		if (!isValidWebSocketUrl(url)) throw new Error('Invalid WebSocket URL format');
-		return new WebSocketProvider(url, chainId);
-	} else return new JsonRpcProvider(url, chainId);
+		return createRateLimitedProvider(url, chainId, 15, 1000) as RateLimitedWebSocketProvider;
+	} else {
+		return createRateLimitedProvider(url, chainId, 15, 1000) as RateLimitedJsonRpcProvider;
+	}
 }
 
 providerData.subscribe(({ network, rpcURL: currentRpcURL }) => {
@@ -254,7 +261,7 @@ export function selectRPCURL(url: string): void {
 	connectToURL(); // Connect immediately
 }
 
-export async function ensureProviderConnected(): Promise<JsonRpcProvider | WebSocketProvider | null> {
+export async function ensureProviderConnected(): Promise<RateLimitedJsonRpcProvider | RateLimitedWebSocketProvider | null> {
 	let providerInstance = get(provider);
 	console.log('Initial provider check:', providerInstance);
 
