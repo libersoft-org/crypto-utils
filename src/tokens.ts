@@ -137,18 +137,6 @@ function updateReactiveMap<T>(map: Map<string, T>, updater: (map: Map<string, T>
 	return new Map(map);
 }
 
-export function updateTokenInfo(contractAddress: string, tokenInfo: { name: string; symbol: string } | null): void {
-	tokenInfos.update(map => {
-		const newMap = new Map(map);
-		if (tokenInfo) {
-			newMap.set(contractAddress, tokenInfo);
-		} else {
-			newMap.delete(contractAddress);
-		}
-		return newMap;
-	});
-}
-
 function updateReactiveSet<T>(set: Set<T>, updater: (set: Set<T>) => void): Set<T> {
 	updater(set);
 	return new Set(set);

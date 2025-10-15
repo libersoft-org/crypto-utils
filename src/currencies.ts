@@ -19,19 +19,17 @@ export const currencies = derived([selectedNetwork, tokenConfs, tokenInfos], ([$
 	}
 	
 	// Add tokens
-	if ($tokenConfs && $tokenConfs.length > 0) {
-		$tokenConfs.forEach(token => {
-			if (token.contract_address) {
-				const tokenInfo = $tokenInfos.get(token.contract_address);
-				const symbol = tokenInfo?.symbol || token.contract_address.slice(0, 8) + '...';
-				currencyList.push({
-					symbol: symbol,
-					iconURL: token.iconURL,
-					contract_address: token.contract_address,
-				});
-			}
-		});
-	}
-	
+	$tokenConfs?.forEach(token => {
+		if (token.contract_address) {
+			const tokenInfo = $tokenInfos.get(token.contract_address);
+			const symbol = tokenInfo?.symbol || token.contract_address.slice(0, 8) + '...';
+			currencyList.push({
+				symbol: symbol,
+				iconURL: token.iconURL,
+				contract_address: token.contract_address,
+			});
+		}
+	});
+
 	return currencyList;
 });

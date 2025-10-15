@@ -36,9 +36,14 @@ export const selectedAddress = derived([selectedWallet], ([$selectedWallet]) => 
 	return result;
 });
 export let sendAddress = writable<string | number | undefined>();
+export let sendCurrency = writable<string | null | undefined>();
 
 export function setSendAddress(address: string) {
 	if (get(sendAddress) !== address) sendAddress.set(address);
+}
+
+export function setSendCurrency(currency: string | null) {
+	if (get(sendCurrency) !== currency) sendCurrency.set(currency);
 }
 
 function sortAddresses(addresses: IAddress[]): IAddress[] {

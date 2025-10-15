@@ -129,7 +129,7 @@ export const nftsForDisplay = derived(
 				isLoadingToken: isLoadingToken || !$wasEverLoadingNftTokens.has(conf.guid),
 				isLoadingBalance: isLoadingBalance || !$wasEverLoadingNftBalances.has(conf.guid),
 
-				displayName: (tokenMetadata?.name || collectionInfo?.name || 'NFT') + (conf.token_id ? ` #${conf.token_id}` : ''),
+				displayName: (collectionInfo?.name || 'NFT') + (conf.token_id ? ` #${conf.token_id}` : '')+ (tokenMetadata?.name ? ` - ${tokenMetadata.name}` : ''),
 			} as INftForDisplay;
 		});
 	}
@@ -199,7 +199,7 @@ async function executeNftOperation<T>(
 				}
 		}
 	} catch (error) {
-		console.warn(`Failed NFT operation for ${standard} contract ${configuredNft.contract_address}:`, error);
+		console.debug(`Failed NFT operation for ${standard} contract ${configuredNft.contract_address}:`, error instanceof Error ? error.message : error);
 		return null;
 	}
 }
@@ -591,7 +591,7 @@ async function fetchNFTMetadata(tokenURI: string): Promise<Partial<INftLoadedInf
 			attributes: metadata.attributes
 		};
 	} catch (error) {
-		console.warn('Failed to fetch NFT metadata from:', tokenURI, error);
+		console.debug('Failed to fetch NFT metadata from', tokenURI, ':', error instanceof Error ? error.message : error);
 		return {};
 	}
 }
