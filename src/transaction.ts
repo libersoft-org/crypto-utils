@@ -2,11 +2,12 @@ import { get } from 'svelte/store';
 import { writable } from 'svelte/store';
 import { Mnemonic, HDNodeWallet, parseUnits, formatUnits, Contract, type PreparedTransactionRequest, type TransactionReceipt } from 'ethers';
 import { ensureProviderConnected, provider, reconnect, status } from './provider';
-import { selectedNetwork } from './network';
+import { selectedNetwork, type INetwork } from './network';
 import { selectedWallet, selectedAddress } from './wallet';
 import { sendTransactionTrezor } from './trezor-transaction';
 import { sendTransactionLedger } from './ledger-transaction';
 import type {TransactionResponse} from "ethers";
+import { addTransactionToLog } from './log.ts';
 
 export interface IPayment {
 	address: string;
@@ -389,7 +390,15 @@ function formatTransactionTime(seconds: number): string {
 	}
 }
 
-export async function sendTransaction(address: string, etherValue: bigint, etherValueFee: bigint, contractAddress?: string): Promise<string | null> {
+export async function sendTransaction(
+	address: string,
+	etherValue: bigint,
+	etherValueFee: bigint,
+	contractAddress?: string,
+	selectedCurrencySymbol?: string,
+	decimals?: number,
+): Promise<string | null> {
+	const network = get(selectedNetwork);
 	const selectedWalletValue = get(selectedWallet);
 	const selectedAddressValue = get(selectedAddress);
 	console.log('sendTransaction debug - selectedWalletValue:', selectedWalletValue);
@@ -401,17 +410,32 @@ export async function sendTransaction(address: string, etherValue: bigint, ether
 		return null;
 	}
 
-	console.log('selectedWalletValue.type:', selectedWalletValue.type);
+	//console.log('selectedWalletValue.type:', selectedWalletValue.type);
+	let hash: string | null = null;
 	if (selectedWalletValue.type === 'software') {
-		return (await sendTransactionSw(selectedWalletValue, selectedAddressValue, address, etherValue, etherValueFee, contractAddress)).hash;
+		hash = (await sendTransactionSw(selectedWalletValue, selectedAddressValue, address, etherValue, etherValueFee, contractAddress)).hash;
 	} else if (selectedWalletValue.type === 'trezor') {
-		return (await sendTransactionTrezor(selectedWalletValue, selectedAddressValue, address, etherValue, etherValueFee, contractAddress)).hash;
+		hash = (await sendTransactionTrezor(selectedWalletValue, selectedAddressValue, address, etherValue, etherValueFee, contractAddress)).hash;
 	} else if (selectedWalletValue.type === 'ledger') {
-		return (await sendTransactionLedger(selectedWalletValue, selectedAddressValue, address, etherValue, etherValueFee, contractAddress)).hash;
+		hash = (await sendTransactionLedger(selectedWalletValue, selectedAddressValue, address, etherValue, etherValueFee, contractAddress)).hash;
 	} else {
 		console.error('Unknown wallet type:', selectedWalletValue.type);
 		throw new Error('Invalid wallet configuration');
 	}
+
+	logTransaction(network, address, etherValue, contractAddress, hash, selectedCurrencySymbol, decimals);
+	return hash;
+}
+
+
+export function logTransaction(network: INetwork | undefined, address: string, amount: bigint, contractAddress?: string, hash?: string, selectedCurrencySymbol?: string, decimals?: number): void {
+	if (!network) {
+		console.warn('Cannot log transaction: no network provided');
+		return;
+	}
+	const decimals2 = contractAddress ? ((decimals === null || decimals === undefined) ? 18 : decimals) : 18;
+	const symbol = contractAddress ? (selectedCurrencySymbol||'') : get(selectedNetwork)?.currency?.symbol || '';
+	addTransactionToLog(network, address, amount, symbol, decimals2, contractAddress ?? undefined, hash ?? undefined);
 }
 
 async function sendTransactionSw(selectedWalletValue: any, selectedAddressValue: any, address: string, etherValue: bigint, etherValueFee: bigint, contractAddress?: string): Promise<TransactionResponse> {

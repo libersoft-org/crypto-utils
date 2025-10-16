@@ -1,6 +1,6 @@
 import { localStorageSharedStore } from './utils/svelte-shared-store.js';
 import { provider } from './provider.js';
-import { selectedNetwork } from './network.js';
+import { selectedNetwork, type INetwork } from './network.js';
 import { get } from 'svelte/store';
 
 export type TxStatus = 'Not sent' | 'Pending' | 'Success' | 'Error';
@@ -49,8 +49,7 @@ export function getTxGasUsedAsBigInt(tx: TxLogEntry): bigint | undefined {
 /**
  * Add a new transaction to the log
  */
-export function addTransactionToLog(address: string, amount: bigint, currency: string, decimals: number, contractAddress?: string, hash?: string): string {
-	const network = get(selectedNetwork);
+export function addTransactionToLog(network: INetwork, address: string, amount: bigint, currency: string, decimals: number, contractAddress?: string, hash?: string): string {
 	if (!network) {
 		throw new Error('No network selected');
 	}
