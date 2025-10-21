@@ -27,10 +27,24 @@ export interface IBalanceWithFiat {
 }
 
 
-export interface ICurrency {
-	name?: string;
+export interface INativeCurrency {
 	symbol?: string;
-	contract_address?: string;
 	iconURL?: string;
 }
+
+export interface INftMetadata {
+	name?: string;
+	description?: string;
+	image?: string;
+	external_url?: string;
+	attributes?: Array<{
+		trait_type: string;
+		value: string | number;
+	}>;
+}
+
+export type ICurrency = 
+	| { type: 'native'; symbol: string; iconURL?: string; }
+	| { type: 'token'; symbol: string; iconURL?: string; contract_address: string; decimals: number; }
+	| { type: 'nft'; symbol: string; iconURL?: string; contract_address: string; tokenId: string; standard: 'ERC721' | 'ERC1155'; metadata?: INftMetadata; };
 

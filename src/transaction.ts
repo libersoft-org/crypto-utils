@@ -9,12 +9,24 @@ import { sendTransactionLedger } from './ledger-transaction';
 import type {TransactionResponse} from "ethers";
 import { addTransactionToLog } from './log.ts';
 
+// NFT ABIs
+const ERC721_ABI = [
+	'function transferFrom(address from, address to, uint256 tokenId)',
+	'function safeTransferFrom(address from, address to, uint256 tokenId)'
+];
+
+const ERC1155_ABI = [
+	'function safeTransferFrom(address from, address to, uint256 id, uint256 amount, bytes data)'
+];
+
 export interface IPayment {
 	address: string;
 	amount: bigint;
 	fee: bigint;
 	symbol: string | null | undefined;
 	contractAddress?: string; // For tokens - undefined for native currency
+	tokenId?: string; // For NFTs
+	nftStandard?: 'ERC721' | 'ERC1155'; // For NFTs
 }
 
 export interface FeeEstimate {
@@ -61,7 +73,7 @@ export function getEtherAmount(amount: string | number): bigint | null {
 	}
 }
 
-export async function estimateTransactionFee(contractAddress?: string): Promise<{
+export async function estimateTransactionFee(contractAddress?: string, tokenId?: string, nftStandard?: 'ERC721' | 'ERC1155'): Promise<{
 	low: string;
 	average: string;
 	high: string;
@@ -83,19 +95,41 @@ export async function estimateTransactionFee(contractAddress?: string): Promise<
 
 		// Determine appropriate gas limit
 		if (contractAddress) {
-			// For token transactions, estimate gas limit
-			try {
-				const mn = Mnemonic.fromPhrase(get(selectedWallet)?.phrase || '');
-				const hd_wallet = HDNodeWallet.fromMnemonic(mn, selectedAddressValue.path).connect(providerInstance);
-				const tokenContract = new Contract(contractAddress, ['function transfer(address to, uint256 amount) returns (bool)'], hd_wallet);
-				// Use a dummy address and amount for estimation
-				const dummyAddress = '0x0000000000000000000000000000000000000001';
-				const dummyAmount = parseUnits('1', 18);
-				gasLimit = await tokenContract.transfer.estimateGas(dummyAddress, dummyAmount);
-				console.log('estimateTransactionFee: Estimated gas limit for token:', gasLimit.toString());
-			} catch (error) {
-				console.warn('estimateTransactionFee: Could not estimate token gas, using default 65000');
-				gasLimit = 65000n; // Default for token transfers
+			if (tokenId && nftStandard) {
+				// For NFT transactions, estimate gas limit with appropriate ABI
+				try {
+					const mn = Mnemonic.fromPhrase(get(selectedWallet)?.phrase || '');
+					const hd_wallet = HDNodeWallet.fromMnemonic(mn, selectedAddressValue.path).connect(providerInstance);
+					const dummyAddress = '0x0000000000000000000000000000000000000001';
+					
+					if (nftStandard === 'ERC721') {
+						const nftContract = new Contract(contractAddress, ERC721_ABI, hd_wallet);
+						gasLimit = await nftContract.safeTransferFrom.estimateGas(selectedAddressValue.address, dummyAddress, tokenId);
+						console.log('estimateTransactionFee: Estimated gas limit for ERC721 NFT:', gasLimit.toString());
+					} else { // ERC1155
+						const nftContract = new Contract(contractAddress, ERC1155_ABI, hd_wallet);
+						gasLimit = await nftContract.safeTransferFrom.estimateGas(selectedAddressValue.address, dummyAddress, tokenId, 1n, '0x');
+						console.log('estimateTransactionFee: Estimated gas limit for ERC1155 NFT:', gasLimit.toString());
+					}
+				} catch (error) {
+					console.warn('estimateTransactionFee: Could not estimate NFT gas, using default 150000');
+					gasLimit = 150000n; // Higher default for NFT transfers (they tend to use more gas)
+				}
+			} else {
+				// For token transactions, estimate gas limit
+				try {
+					const mn = Mnemonic.fromPhrase(get(selectedWallet)?.phrase || '');
+					const hd_wallet = HDNodeWallet.fromMnemonic(mn, selectedAddressValue.path).connect(providerInstance);
+					const tokenContract = new Contract(contractAddress, ['function transfer(address to, uint256 amount) returns (bool)'], hd_wallet);
+					// Use a dummy address and amount for estimation
+					const dummyAddress = '0x0000000000000000000000000000000000000001';
+					const dummyAmount = parseUnits('1', 18);
+					gasLimit = await tokenContract.transfer.estimateGas(dummyAddress, dummyAmount);
+					console.log('estimateTransactionFee: Estimated gas limit for token:', gasLimit.toString());
+				} catch (error) {
+					console.warn('estimateTransactionFee: Could not estimate token gas, using default 65000');
+					gasLimit = 65000n; // Default for token transfers
+				}
 			}
 		} else {
 			// For ETH transactions
@@ -397,6 +431,8 @@ export async function sendTransaction(
 	contractAddress?: string,
 	selectedCurrencySymbol?: string,
 	decimals?: number,
+	tokenId?: string,
+	nftStandard?: 'ERC721' | 'ERC1155'
 ): Promise<string | null> {
 	const network = get(selectedNetwork);
 	const selectedWalletValue = get(selectedWallet);
@@ -413,7 +449,7 @@ export async function sendTransaction(
 	//console.log('selectedWalletValue.type:', selectedWalletValue.type);
 	let hash: string | null = null;
 	if (selectedWalletValue.type === 'software') {
-		hash = (await sendTransactionSw(selectedWalletValue, selectedAddressValue, address, etherValue, etherValueFee, contractAddress)).hash;
+		hash = (await sendTransactionSw(selectedWalletValue, selectedAddressValue, address, etherValue, etherValueFee, contractAddress, tokenId, nftStandard)).hash;
 	} else if (selectedWalletValue.type === 'trezor') {
 		hash = (await sendTransactionTrezor(selectedWalletValue, selectedAddressValue, address, etherValue, etherValueFee, contractAddress)).hash;
 	} else if (selectedWalletValue.type === 'ledger') {
@@ -438,7 +474,7 @@ export function logTransaction(network: INetwork | undefined, address: string, a
 	addTransactionToLog(network, address, amount, symbol, decimals2, contractAddress ?? undefined, hash ?? undefined);
 }
 
-async function sendTransactionSw(selectedWalletValue: any, selectedAddressValue: any, address: string, etherValue: bigint, etherValueFee: bigint, contractAddress?: string): Promise<TransactionResponse> {
+async function sendTransactionSw(selectedWalletValue: any, selectedAddressValue: any, address: string, etherValue: bigint, etherValueFee: bigint, contractAddress?: string, tokenId?: string, nftStandard?: 'ERC721' | 'ERC1155'): Promise<TransactionResponse> {
 	// Check provider connection and attempt to reconnect if needed
 	let providerInstance = await ensureProviderConnected();
 	if (!providerInstance) {
@@ -452,7 +488,23 @@ async function sendTransactionSw(selectedWalletValue: any, selectedAddressValue:
 	const mn = Mnemonic.fromPhrase(selectedWalletValue.phrase);
 	let hd_wallet = HDNodeWallet.fromMnemonic(mn, selectedAddressValue.path).connect(providerInstance);
 	let request: PreparedTransactionRequest;
-	if (contractAddress) {
+	if (tokenId && nftStandard && contractAddress) {
+		// NFT transaction
+		let transferData: string;
+		if (nftStandard === 'ERC721') {
+			const nftContract = new Contract(contractAddress, ERC721_ABI, hd_wallet);
+			transferData = nftContract.interface.encodeFunctionData('safeTransferFrom', [selectedAddressValue.address, address, tokenId]);
+		} else { // ERC1155
+			const nftContract = new Contract(contractAddress, ERC1155_ABI, hd_wallet);
+			transferData = nftContract.interface.encodeFunctionData('safeTransferFrom', [selectedAddressValue.address, address, tokenId, etherValue, '0x']);
+		}
+		request = {
+			to: contractAddress,
+			from: selectedAddressValue.address,
+			value: 0n, // No ETH value for NFT transfers
+			data: transferData,
+		};
+	} else if (contractAddress) {
 		// Token transaction - call transfer method on the token contract
 		const tokenContract = new Contract(contractAddress, ['function transfer(address to, uint256 amount) returns (bool)'], hd_wallet);
 		const transferData = tokenContract.interface.encodeFunctionData('transfer', [address, etherValue]);

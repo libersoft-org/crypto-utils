@@ -24,6 +24,8 @@
   "./nfts": "./src/nfts.ts",
   "./currencies": "./src/currencies.ts",
   "./fiat": "./src/fiat.ts",
+  "./native": "./src/native.ts",
+  "./types": "./src/types.ts",
   "./address-validation": "./src/address-validation.ts",
   "./refresh": "./src/refresh.ts"
  },

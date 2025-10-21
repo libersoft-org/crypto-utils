@@ -35,11 +35,12 @@ export interface ITokenConf extends ITokenDef {
 }
 
 /**
- * Token information loaded from blockchain (name, symbol, decimals)
+ * Token information loaded from blockchain (name, symbol, decimals(?))
  */
 export interface ITokenLoadedInfo {
 	symbol: string;
 	name: string;
+	decimals: number;
 }
 
 export interface BatchRequestPayload {
@@ -231,7 +232,7 @@ export async function loadAllTokenInfos(): Promise<void> {
 		tokenInfos.update(map => updateReactiveMap(map, m => {
 			tokensToLoad.forEach(token => {
 				if (token.contract_address && !m.has(token.contract_address)) {
-					m.set(token.contract_address, { symbol: 'UNKNOWN', name: 'Unknown token' });
+					m.set(token.contract_address, { symbol: 'UNKNOWN', name: 'Unknown token', decimals: 18 });
 				}
 			});
 		}));
@@ -247,7 +248,7 @@ export async function loadAllTokenInfos(): Promise<void> {
 
 
 // Common ERC-20 ABIs
-const erc20InfoABI = ['function name() view returns (string)', 'function symbol() view returns (string)'];
+const erc20InfoABI = ['function name() view returns (string)', 'function symbol() view returns (string)', 'function decimals() view returns (uint8)'];
 const erc20BalanceABI = ['function balanceOf(address owner) view returns (uint256)', 'function decimals() view returns (uint8)'];
 
 
@@ -661,27 +662,28 @@ async function executeMulticallBalances(tokensWithAddresses: any[], provider: an
 
 
 // Process token info results from JSON-RPC batch
-function processTokenInfoBatchResults(batchResults: any[], addresses: string[], contract: Contract): Map<string, {
-	name: string;
-	symbol: string
-}> {
-	const result = new Map<string, { name: string; symbol: string }>();
+function processTokenInfoBatchResults(batchResults: any[], addresses: string[], contract: Contract): Map<string, ITokenLoadedInfo> {
+	const result = new Map<string, ITokenLoadedInfo>();
 
 	for (let i = 0; i < addresses.length; i++) {
-		const nameIndex = i * 2;
-		const symbolIndex = i * 2 + 1;
+		const nameIndex = i * 3;
+		const symbolIndex = i * 3 + 1;
+		const decimalsIndex = i * 3 + 2;
 		const address = addresses[i];
 
 		try {
 			const nameResult = batchResults[nameIndex];
 			const symbolResult = batchResults[symbolIndex];
+			const decimalsResult = batchResults[decimalsIndex];
 
-			if (nameResult?.result && symbolResult?.result) {
+			if (nameResult?.result && symbolResult?.result && decimalsResult?.result) {
 				const name = contract.interface.decodeFunctionResult('name', nameResult.result)[0];
 				const symbol = contract.interface.decodeFunctionResult('symbol', symbolResult.result)[0];
+				const decimals = contract.interface.decodeFunctionResult('decimals', decimalsResult.result)[0];
 				result.set(address, {
 					name: String(name),
-					symbol: String(symbol)
+					symbol: String(symbol),
+					decimals: Number(decimals)
 				});
 			} else {
 				console.info(`Failed to get info for token ${address}`);
@@ -694,11 +696,8 @@ function processTokenInfoBatchResults(batchResults: any[], addresses: string[], 
 	return result;
 }
 
-async function fallbackBatchCall(contractAddresses: string[], provider: any, network: any): Promise<Map<string, {
-	name: string;
-	symbol: string
-}>> {
-	return executeBatchCall(contractAddresses, erc20InfoABI, ['name', 'symbol'], provider, network, [], processTokenInfoBatchResults);
+async function fallbackBatchCall(contractAddresses: string[], provider: any, network: any): Promise<Map<string, ITokenLoadedInfo>> {
+	return executeBatchCall(contractAddresses, erc20InfoABI, ['name', 'symbol', 'decimals'], provider, network, [], processTokenInfoBatchResults);
 }
 
 // Process token balance results from JSON-RPC batch
@@ -838,11 +837,8 @@ function processTokenBalanceResults(returnData: string[], tokens: any[], erc20In
 
 
 // Wrapper for token info Multicall
-async function tryMulticall(contractAddresses: string[], provider: any, network: any): Promise<Map<string, {
-	name: string;
-	symbol: string
-}> | null> {
-	return executeMulticall(contractAddresses, erc20InfoABI, ['name', 'symbol'], provider, network, [], processTokenInfoResults);
+async function tryMulticall(contractAddresses: string[], provider: any, network: any): Promise<Map<string, ITokenLoadedInfo> | null> {
+	return executeMulticall(contractAddresses, erc20InfoABI, ['name', 'symbol', 'decimals'], provider, network, [], processTokenInfoResults);
 }
 
 // Generic JSON-RPC batch executor
@@ -901,24 +897,24 @@ async function executeBatchCall<T>(addresses: string[], abi: string[], functionN
 
 
 // Process token info results from Multicall
-function processTokenInfoResults(returnData: string[], addresses: string[], erc20Interface: any): Map<string, {
-	name: string;
-	symbol: string
-}> {
-	const result = new Map<string, { name: string; symbol: string }>();
+function processTokenInfoResults(returnData: string[], addresses: string[], erc20Interface: any): Map<string, ITokenLoadedInfo> {
+	const result = new Map<string, ITokenLoadedInfo>();
 
 	for (let i = 0; i < addresses.length; i++) {
-		const nameIndex = i * 2;
-		const symbolIndex = i * 2 + 1;
+		const nameIndex = i * 3;
+		const symbolIndex = i * 3 + 1;
+		const decimalsIndex = i * 3 + 2;
 		const address = addresses[i];
 
 		try {
-			if (returnData[nameIndex] && returnData[symbolIndex]) {
+			if (returnData[nameIndex] && returnData[symbolIndex] && returnData[decimalsIndex]) {
 				const name = erc20Interface.decodeFunctionResult('name', returnData[nameIndex])[0];
 				const symbol = erc20Interface.decodeFunctionResult('symbol', returnData[symbolIndex])[0];
+				const decimals = erc20Interface.decodeFunctionResult('decimals', returnData[decimalsIndex])[0];
 				result.set(address, {
 					name: String(name),
-					symbol: String(symbol)
+					symbol: String(symbol),
+					decimals: Number(decimals)
 				});
 			} else {
 				console.warn(`Failed to get info for token ${address} via Multicall`);
@@ -940,7 +936,7 @@ function processTokenInfoResults(returnData: string[], addresses: string[], erc2
 export async function getBatchTokensInfo(contractAddresses: ContractAddress[]): Promise<Map<ContractAddress, ITokenLoadedInfo>> {
 	const p = get(provider);
 	const net = get(selectedNetwork);
-	const result = new Map<string, { name: string; symbol: string }>();
+	const result = new Map<string, ITokenLoadedInfo>();
 	if (!net || !p || contractAddresses.length === 0) {
 		console.error('Network, provider not set or no addresses provided');
 		return result;

@@ -1,18 +1,7 @@
 /* cryptocurrency balance management for chain-native currency (e.g., ETH, BNB, MATIC) with fiat conversion */
 
-import { get, writable } from 'svelte/store';
 import { formatUnits } from 'ethers';
-import { selectedNetwork } from './network';
-import { selectedAddress } from './wallet';
-import { provider } from './provider';
-import type { IBalance, IBalanceWithFiat } from './types';
-export type { IBalance };
-import { nativeBalance, refreshBalance, getBalance, isLoadingNativeBalance } from './native';
-
-// Re-exports for backwards compatibility with existing imports
-export { refreshBalance, getBalance };
-export { nativeBalance as balance, isLoadingNativeBalance as isLoadingBalance };
-
+import type { IBalance } from './types';
 
 
 

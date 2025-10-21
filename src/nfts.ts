@@ -65,6 +65,7 @@ export interface INftForDisplay {
 	isLoadingCollection: boolean;
 	isLoadingBalance: boolean;
 	displayName: string;
+	standard: NftStandard | undefined;
 }
 
 
@@ -72,6 +73,7 @@ export interface INftForDisplay {
 export const nftCollectionInfos = writable<Map<ContractAddress, INftCollectionInfo | null>>(new Map());
 export const nftTokenMetadatas = writable<Map<Guid, INftLoadedInfo>>(new Map());
 export const nftBalances = writable<Map<Guid, INftBalance>>(new Map());
+export const nftStandards = writable<Map<ContractAddress, NftStandard>>(new Map());
 
 export const loadingNftCollections = writable<Set<ContractAddress>>(new Set());
 export const loadingNftTokens = writable<Set<Guid>>(new Set());
@@ -88,6 +90,7 @@ export const nftsForDisplay = derived(
 		nftCollectionInfos,
 		nftTokenMetadatas,
 		nftBalances,
+		nftStandards,
 		loadingNftCollections,
 		loadingNftTokens,
 		loadingNftBalances,
@@ -101,6 +104,7 @@ export const nftsForDisplay = derived(
 		$nftCollectionInfos,
 		$nftTokenMetadatas,
 		$nftBalances,
+		$nftStandards,
 		$loadingNftCollections,
 		$loadingNftTokens,
 		$loadingNftBalances,
@@ -114,6 +118,7 @@ export const nftsForDisplay = derived(
 			const collectionInfo = $nftCollectionInfos.get(conf.contract_address);
 			const tokenMetadata = $nftTokenMetadatas.get(conf.guid);
 			const balance = $nftBalances.get(conf.guid);
+			const standard = $nftStandards.get(conf.contract_address);
 
 			const isLoadingCollection = $loadingNftCollections.has(conf.contract_address);
 			const isLoadingToken = $loadingNftTokens.has(conf.guid);
@@ -124,6 +129,7 @@ export const nftsForDisplay = derived(
 				tokenMetadata,
 				collectionInfo,
 				balance,
+				standard,
 
 				isLoadingCollection: isLoadingCollection || !$wasEverLoadingNftCollections.has(conf.contract_address),
 				isLoadingToken: isLoadingToken || !$wasEverLoadingNftTokens.has(conf.guid),
@@ -248,11 +254,12 @@ export async function loadNFTCollectionInfos(contractAddresses: string[]): Promi
 	const results = await Promise.allSettled(
 		contractsToLoad.map(async (contractAddress) => {
 			const contract = new Contract(contractAddress, erc721ABI, p);
-			const [name, symbol] = await Promise.all([
+			const [name, symbol, standard] = await Promise.all([
 				contract.name(),
-				contract.symbol()
+				contract.symbol(),
+				detectNftStandard(contractAddress, p)
 			]);
-			return { contractAddress, info: { name, symbol } };
+			return { contractAddress, info: { name, symbol }, standard };
 		})
 	);
 
@@ -265,6 +272,16 @@ export async function loadNFTCollectionInfos(contractAddresses: string[]): Promi
 			} else {
 				console.warn(`Failed to load collection info for ${contractAddress}:`, result.reason);
 				map.set(contractAddress, null);
+			}
+		});
+		return map;
+	});
+
+	nftStandards.update(map => {
+		results.forEach((result, index) => {
+			const contractAddress = contractsToLoad[index];
+			if (result.status === 'fulfilled') {
+				map.set(contractAddress, result.value.standard);
 			}
 		});
 		return map;
@@ -623,8 +640,18 @@ function cleanupOldNftData(currentConfigs: INftConf[]) {
 		return newMap;
 	});
 	
-	// Clean up collection info for unused contracts
+	// Clean up collection info and standards for unused contracts
 	nftCollectionInfos.update(map => {
+		const newMap = new Map();
+		for (const [contract, data] of map.entries()) {
+			if (currentContracts.has(contract)) {
+				newMap.set(contract, data);
+			}
+		}
+		return newMap;
+	});
+	
+	nftStandards.update(map => {
 		const newMap = new Map();
 		for (const [contract, data] of map.entries()) {
 			if (currentContracts.has(contract)) {
@@ -720,6 +747,54 @@ export async function refreshNftBalance(guid: Guid): Promise<void> {
 			set.delete(guid);
 			return set;
 		});
+	}
+}
+
+/**
+ * Get NFT balance for a specific contract address and token ID
+ * Similar to getTokenBalanceByAddress but for NFTs
+ * @param contractAddress - The NFT contract address  
+ * @param tokenId - The specific token ID
+ * @returns IBalance object with NFT balance or null if not found
+ */
+export async function getNftBalanceByAddress(contractAddress: string, tokenId: string): Promise<{ amount: bigint; currency: string; decimals: number } | null> {
+	await waitForProviderReady();
+
+	const p = get(provider);
+	const addr = get(selectedAddress);
+
+	if (!p || !addr || !tokenId) {
+		return null;
+	}
+
+	try {
+		// Create a temporary NFT config for the balance check
+		const tempNftConf: INftConf = {
+			guid: `temp-${contractAddress}-${tokenId}`,
+			contract_address: contractAddress,
+			token_id: tokenId
+		};
+
+		const amount = await executeNftOperation(
+			tempNftConf,
+			p,
+			addr.address,
+			() => getErc721Balance(tempNftConf, p, addr.address),
+			() => getErc1155Balance(tempNftConf, p, addr.address)
+		);
+
+		if (amount !== null) {
+			return {
+				amount: BigInt(amount),
+				currency: `NFT-${contractAddress}-${tokenId}`,
+				decimals: 0 // NFTs are always integers
+			};
+		}
+
+		return null;
+	} catch (error) {
+		console.error('Error getting NFT balance:', error);
+		return null;
 	}
 }
 

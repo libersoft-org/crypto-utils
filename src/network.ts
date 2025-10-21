@@ -2,7 +2,7 @@ import { get, writable, derived } from 'svelte/store';
 import { localStorageSharedStore } from './utils/svelte-shared-store';
 import { getGuid } from './utils/utils';
 import { defaultNetworks } from './default-networks';
-import type { ICurrency, Guid } from './types';
+import type { ICurrency, INativeCurrency, Guid } from './types';
 import type { ITokenConf } from './tokens';
 import type { INftConf } from './nfts';
 
@@ -30,7 +30,7 @@ export interface INetwork {
 	name: string;
 	chainID: number;
 	explorerURL?: string;
-	currency: ICurrency;
+	currency: INativeCurrency;
 	rpcURLs?: string[];
 	tokens?: ITokenConf[];
 	nfts?: INftConf[];
