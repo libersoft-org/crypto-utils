@@ -1,12 +1,21 @@
 import { formatUnits, Contract } from 'ethers';
 import { get, writable, derived } from 'svelte/store';
 // Removed circular import - this function is defined in this file
-import type { Guid, ContractAddress } from './types.ts';
+import type { Guid, ContractAddress, NftKey } from './types.ts';
 import { provider, waitForProviderReady } from './provider.ts';
 import { networks, selectedNetwork } from './network.ts';
 import { selectedAddress } from './wallet.ts';
 
-
+/**
+ * Generates a unique key for looking up NFT balances based on contract address and token ID.
+ * This is used for balance lookups in stores like nftBalances, not for NFT configuration GUIDs.
+ * @param contract_address - The NFT contract address
+ * @param token_id - The token ID
+ * @returns A unique balance key string in format: contract_address_token_id
+ */
+export function nftBalanceKey(contract_address: string, token_id: string): NftKey {
+	return `${contract_address}_${token_id}`;
+}
 
 export let nftConfs = derived([selectedNetwork], ([$selectedNetwork]) => {
 	return ($selectedNetwork?.nfts || []).map(nft => ({
@@ -71,17 +80,18 @@ export interface INftForDisplay {
 
 // Stores
 export const nftCollectionInfos = writable<Map<ContractAddress, INftCollectionInfo | null>>(new Map());
-export const nftTokenMetadatas = writable<Map<Guid, INftLoadedInfo>>(new Map());
-export const nftBalances = writable<Map<Guid, INftBalance>>(new Map());
+export const nftTokenMetadatas = writable<Map<NftKey, INftLoadedInfo>>(new Map());
+export const nftBalances = writable<Map<NftKey, INftBalance>>(new Map());
 export const nftStandards = writable<Map<ContractAddress, NftStandard>>(new Map());
 
 export const loadingNftCollections = writable<Set<ContractAddress>>(new Set());
-export const loadingNftTokens = writable<Set<Guid>>(new Set());
-export const loadingNftBalances = writable<Set<Guid>>(new Set());
+export const loadingNftTokens = writable<Set<NftKey>>(new Set());
+export const loadingNftBalances = writable<Set<NftKey>>(new Set());
 
+// used to force a "loading" UI indicator immediately on wallet load
 const wasEverLoadingNftCollections = writable<Set<ContractAddress>>(new Set());
-const wasEverLoadingNftTokens = writable<Set<Guid>>(new Set());
-const wasEverLoadingNftBalances = writable<Set<Guid>>(new Set());
+const wasEverLoadingNftTokens = writable<Set<NftKey>>(new Set());
+const wasEverLoadingNftBalances = writable<Set<NftKey>>(new Set());
 
 
 export const nftsForDisplay = derived(
@@ -114,15 +124,16 @@ export const nftsForDisplay = derived(
 
 	 ]) => {
 		return $nftConfs.map(conf => {
+			const key = nftBalanceKey(conf.contract_address, conf.token_id || '0');
 
 			const collectionInfo = $nftCollectionInfos.get(conf.contract_address);
-			const tokenMetadata = $nftTokenMetadatas.get(conf.guid);
-			const balance = $nftBalances.get(conf.guid);
+			const tokenMetadata = $nftTokenMetadatas.get(key);
+			const balance = $nftBalances.get(key);
 			const standard = $nftStandards.get(conf.contract_address);
 
 			const isLoadingCollection = $loadingNftCollections.has(conf.contract_address);
-			const isLoadingToken = $loadingNftTokens.has(conf.guid);
-			const isLoadingBalance = $loadingNftBalances.has(conf.guid);
+			const isLoadingToken = $loadingNftTokens.has(key);
+			const isLoadingBalance = $loadingNftBalances.has(key);
 
 			return {
 				conf: conf,
@@ -132,8 +143,8 @@ export const nftsForDisplay = derived(
 				standard,
 
 				isLoadingCollection: isLoadingCollection || !$wasEverLoadingNftCollections.has(conf.contract_address),
-				isLoadingToken: isLoadingToken || !$wasEverLoadingNftTokens.has(conf.guid),
-				isLoadingBalance: isLoadingBalance || !$wasEverLoadingNftBalances.has(conf.guid),
+				isLoadingToken: isLoadingToken || !$wasEverLoadingNftTokens.has(key),
+				isLoadingBalance: isLoadingBalance || !$wasEverLoadingNftBalances.has(key),
 
 				displayName: (collectionInfo?.name || 'NFT') + (conf.token_id ? ` #${conf.token_id}` : '')+ (tokenMetadata?.name ? ` - ${tokenMetadata.name}` : ''),
 			} as INftForDisplay;
@@ -454,26 +465,33 @@ async function loadSingleNftMetadata(configuredNft: INftConf, provider: any, add
  */
 export async function loadNFTTokenMetadata(nftItems: INftConf[]): Promise<void> {
 	if (!nftItems.length) return;
-	
+
 	// Filter out NFTs we're already loading or have already loaded
 	const currentlyLoading = get(loadingNftTokens);
 	const currentMetadata = get(nftTokenMetadatas);
-	
-	const tokensToLoad = nftItems.filter(nft => 
-		!currentlyLoading.has(nft.guid) && !currentMetadata.has(nft.guid)
-	);
-	
+
+	const tokensToLoad = nftItems.filter(nft => {
+		const key = nftBalanceKey(nft.contract_address, nft.token_id || '0');
+		return !currentlyLoading.has(key) && !currentMetadata.has(key);
+	});
+
 	if (!tokensToLoad.length) return;
-	
+
 	console.log('Loading NFT token metadata for', tokensToLoad.length, 'tokens');
 
 	// Mark these NFTs as currently loading to prevent duplicate requests
 	loadingNftTokens.update(set => {
-		tokensToLoad.forEach(nft => set.add(nft.guid));
+		tokensToLoad.forEach(nft => {
+			const key = nftBalanceKey(nft.contract_address, nft.token_id || '0');
+			set.add(key);
+		});
 		return set;
 	});
 	wasEverLoadingNftTokens.update(set => {
-		tokensToLoad.forEach(nft => set.add(nft.guid));
+		tokensToLoad.forEach(nft => {
+			const key = nftBalanceKey(nft.contract_address, nft.token_id || '0');
+			set.add(key);
+		});
 		return set;
 	});
 
@@ -482,11 +500,14 @@ export async function loadNFTTokenMetadata(nftItems: INftConf[]): Promise<void> 
 	// Get provider and user address for blockchain calls
 	const p = get(provider);
 	const addr = get(selectedAddress);
-	
+
 	if (!p || !addr) {
 		// Clean up loading state if we can't proceed
 		loadingNftTokens.update(set => {
-			tokensToLoad.forEach(nft => set.delete(nft.guid));
+			tokensToLoad.forEach(nft => {
+				const key = nftBalanceKey(nft.contract_address, nft.token_id || '0');
+				set.delete(key);
+			});
 			return set;
 		});
 		console.warn('Provider or address not available for loading NFT metadata');
@@ -497,7 +518,8 @@ export async function loadNFTTokenMetadata(nftItems: INftConf[]): Promise<void> 
 	const results = await Promise.allSettled(
 		tokensToLoad.map(async (configuredNft) => {
 			const metadata = await loadSingleNftMetadata(configuredNft, p, addr.address);
-			return metadata ? { guid: configuredNft.guid, metadata } : null;
+			const key = nftBalanceKey(configuredNft.contract_address, configuredNft.token_id || '0');
+			return metadata ? { key, metadata } : null;
 		})
 	);
 
@@ -507,7 +529,7 @@ export async function loadNFTTokenMetadata(nftItems: INftConf[]): Promise<void> 
 	nftTokenMetadatas.update(map => {
 		results.forEach((result) => {
 			if (result.status === 'fulfilled' && result.value) {
-				map.set(result.value.guid, result.value.metadata);
+				map.set(result.value.key, result.value.metadata);
 			}
 		});
 		return map;
@@ -515,7 +537,10 @@ export async function loadNFTTokenMetadata(nftItems: INftConf[]): Promise<void> 
 
 	// Clean up loading state
 	loadingNftTokens.update(set => {
-		tokensToLoad.forEach(nft => set.delete(nft.guid));
+		tokensToLoad.forEach(nft => {
+			const key = nftBalanceKey(nft.contract_address, nft.token_id || '0');
+			set.delete(key);
+		});
 		return set;
 	});
 }
@@ -533,7 +558,7 @@ export async function loadNFTBalances(nftItems: INftConf[]): Promise<void> {
 
 	// Load balances in parallel - refreshNftBalance handles deduplication
 	await Promise.all(
-		nftItems.map(nft => refreshNftBalance(nft.guid))
+		nftItems.map(nft => refreshNftBalance(nft))
 	);
 }
 
@@ -616,30 +641,30 @@ async function fetchNFTMetadata(tokenURI: string): Promise<Partial<INftLoadedInf
 
 // Clean up old NFT data that's no longer configured
 function cleanupOldNftData(currentConfigs: INftConf[]) {
-	const currentGuids = new Set(currentConfigs.map(conf => conf.guid));
+	const currentKeys = new Set(currentConfigs.map(conf => nftBalanceKey(conf.contract_address, conf.token_id || '0')));
 	const currentContracts = new Set(currentConfigs.map(conf => conf.contract_address));
-	
+
 	// Clean up metadata and balances for removed NFTs
 	nftTokenMetadatas.update(map => {
 		const newMap = new Map();
-		for (const [guid, data] of map.entries()) {
-			if (currentGuids.has(guid)) {
-				newMap.set(guid, data);
+		for (const [key, data] of map.entries()) {
+			if (currentKeys.has(key)) {
+				newMap.set(key, data);
 			}
 		}
 		return newMap;
 	});
-	
+
 	nftBalances.update(map => {
 		const newMap = new Map();
-		for (const [guid, data] of map.entries()) {
-			if (currentGuids.has(guid)) {
-				newMap.set(guid, data);
+		for (const [key, data] of map.entries()) {
+			if (currentKeys.has(key)) {
+				newMap.set(key, data);
 			}
 		}
 		return newMap;
 	});
-	
+
 	// Clean up collection info and standards for unused contracts
 	nftCollectionInfos.update(map => {
 		const newMap = new Map();
@@ -650,7 +675,7 @@ function cleanupOldNftData(currentConfigs: INftConf[]) {
 		}
 		return newMap;
 	});
-	
+
 	nftStandards.update(map => {
 		const newMap = new Map();
 		for (const [contract, data] of map.entries()) {
@@ -673,20 +698,14 @@ nftConfs.subscribe(async (configs) => {
 
 /**
  * Refresh NFT balance for a specific NFT configuration
- * @param guid - The GUID of the NFT configuration to refresh
+ * @param configuredNft - The NFT configuration to refresh
  */
-export async function refreshNftBalance(guid: Guid): Promise<void> {
+export async function refreshNftBalance(configuredNft: INftConf): Promise<void> {
+	const key = nftBalanceKey(configuredNft.contract_address, configuredNft.token_id || '0');
+
 	// Skip if already loading
 	const currentlyLoading = get(loadingNftBalances);
-	if (currentlyLoading.has(guid)) {
-		return;
-	}
-
-	const nftConfigurations = get(nftConfs);
-	const configuredNft = nftConfigurations.find(nft => nft.guid === guid);
-	
-	if (!configuredNft) {
-		console.debug(`NFT configuration not found for GUID: ${guid} (just deleted?)`);
+	if (currentlyLoading.has(key)) {
 		return;
 	}
 
@@ -700,11 +719,11 @@ export async function refreshNftBalance(guid: Guid): Promise<void> {
 
 	// Mark as loading
 	loadingNftBalances.update(set => {
-		set.add(guid);
+		set.add(key);
 		return set;
 	});
 	wasEverLoadingNftBalances.update(set => {
-		set.add(guid);
+		set.add(key);
 		return set;
 	});
 
@@ -713,7 +732,7 @@ export async function refreshNftBalance(guid: Guid): Promise<void> {
 	try {
 		let amount: number | null = null;
 
-		console.log(`refreshNftBalance: Refreshing balance for NFT GUID ${guid} at contract ${configuredNft.contract_address} with token ID ${configuredNft.token_id || 'N/A'}`);
+		console.log(`refreshNftBalance: Refreshing balance for NFT at contract ${configuredNft.contract_address} with token ID ${configuredNft.token_id || 'N/A'}`);
 
 		if (configuredNft.token_id) {
 			amount = await executeNftOperation(
@@ -723,7 +742,7 @@ export async function refreshNftBalance(guid: Guid): Promise<void> {
 				() => getErc721Balance(configuredNft, p, addr.address),
 				() => getErc1155Balance(configuredNft, p, addr.address)
 			);
-			
+
 			if (amount !== null) {
 				console.log(`    Balance success: User ${addr.address} owns ${amount} of token ${configuredNft.token_id}`);
 			}
@@ -733,7 +752,7 @@ export async function refreshNftBalance(guid: Guid): Promise<void> {
 		if (amount !== null) {
 			nftBalances.update(map => {
 				const newMap = new Map(map);
-				newMap.set(guid, {
+				newMap.set(key, {
 					amount,
 					timestamp: new Date()
 				});
@@ -744,7 +763,7 @@ export async function refreshNftBalance(guid: Guid): Promise<void> {
 	} finally {
 		// Clean up loading state
 		loadingNftBalances.update(set => {
-			set.delete(guid);
+			set.delete(key);
 			return set;
 		});
 	}

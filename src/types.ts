@@ -9,6 +9,12 @@ export type ContractAddress = string;
  */
 export type Guid = string;
 
+/**
+ * NFT Key type for NFT balance and metadata lookups
+ * Format: contract_address_tokenId
+ */
+export type NftKey = string;
+
 export interface IAmount {
 	amount: bigint;
 	decimals?: number;
