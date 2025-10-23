@@ -579,8 +579,8 @@ async function sendTransactionSw(selectedWalletValue: any, selectedAddressValue:
 	console.log('hd_wallet:', hd_wallet);
 	console.log('tx request with nonce:', request);
 	console.log('hd_wallet.estimateGas:');
-	let eg = await hd_wallet.estimateGas(request);
-	console.log('estimateGas:', eg);
+/*	let eg = await hd_wallet.estimateGas(request);
+	console.log('estimateGas:', eg);*/
 	console.log('hd_wallet.sendTransaction:');
 	let tx = await hd_wallet.sendTransaction(request);
 	console.log('Transaction sent, hash:', tx.hash);
