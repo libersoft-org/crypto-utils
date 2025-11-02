@@ -18,7 +18,6 @@ import {
 } from './common';
 
 
-
 /**
  * Basic token definition - the minimal data needed to identify a token
  */
@@ -132,6 +131,11 @@ export const tokensForDisplay = derived(
 );
 
 
+// Common ERC-20 ABIs
+const erc20InfoABI = ['function name() view returns (string)', 'function symbol() view returns (string)', 'function decimals() view returns (uint8)'];
+const erc20BalanceABI = ['function balanceOf(address owner) view returns (uint256)', 'function decimals() view returns (uint8)'];
+
+
 // Helper functions for store updates
 function updateReactiveMap<T>(map: Map<string, T>, updater: (map: Map<string, T>) => void): Map<string, T> {
 	updater(map);
@@ -207,7 +211,6 @@ export async function loadAllTokenInfos(): Promise<void> {
 	);
 
 	if (!tokensToLoad.length) return;
-
 	console.log('Loading token infos for', tokensToLoad.length, 'tokens');
 
 	// Mark all as loading
@@ -228,14 +231,6 @@ export async function loadAllTokenInfos(): Promise<void> {
 
 	} catch (error) {
 		console.error('Error in batch token info loading:', error);
-		// Fallback for all tokens
-		tokenInfos.update(map => updateReactiveMap(map, m => {
-			tokensToLoad.forEach(token => {
-				if (token.contract_address && !m.has(token.contract_address)) {
-					m.set(token.contract_address, { symbol: 'UNKNOWN', name: 'Unknown token', decimals: 18 });
-				}
-			});
-		}));
 	} finally {
 		// Mark all as completed
 		loadingTokenInfos.update(set => updateReactiveSet(set, s => {
@@ -244,12 +239,6 @@ export async function loadAllTokenInfos(): Promise<void> {
 	}
 }
 
-
-
-
-// Common ERC-20 ABIs
-const erc20InfoABI = ['function name() view returns (string)', 'function symbol() view returns (string)', 'function decimals() view returns (uint8)'];
-const erc20BalanceABI = ['function balanceOf(address owner) view returns (uint256)', 'function decimals() view returns (uint8)'];
 
 
 async function fallbackBatchBalanceCallByAddress(tokensWithAddresses: any[], provider: any, network: any, addr: any): Promise<Map<string, IBalance>> {
@@ -642,7 +631,7 @@ async function fallbackBatchBalanceCall(tokensWithAddresses: any[], provider: an
 
 
 // Wrapper for token info Multicall
-async function tryMulticall(contractAddresses: string[], provider: any, network: any): Promise<Map<string, ITokenLoadedInfo> | null> {
+async function tryTokenInfoMulticall(contractAddresses: string[], provider: any, network: any): Promise<Map<string, ITokenLoadedInfo> | null> {
 	return executeMulticall(contractAddresses, erc20InfoABI, ['name', 'symbol', 'decimals'], provider, network, [], processTokenInfoResults);
 }
 
@@ -749,7 +738,7 @@ export async function getBatchTokensInfo(contractAddresses: ContractAddress[]): 
 	try {
 
 		// Try Multicall first
-		let multicallResult = await tryMulticall(contractAddresses, p, net);
+		let multicallResult = await tryTokenInfoMulticall(contractAddresses, p, net);
 		if (!multicallResult) {
 			multicallResult = new Map<string, ITokenLoadedInfo>();
 		}
@@ -793,8 +782,7 @@ export async function getTokenInfo(contractAddress: ContractAddress): Promise<IT
 export async function getTokenDecimals(contractAddress: ContractAddress): Promise<number> {
 	const p = get(provider);
 	if (!p) {
-		console.error('Provider not set');
-		return 18; // Fallback
+		throw new Error('Provider not set');
 	}
 	try {
 		const abi = ['function decimals() view returns (uint8)'];

@@ -1,8 +1,5 @@
-/* cryptocurrency balance management for chain-native currency (e.g., ETH, BNB, MATIC) with fiat conversion */
-
 import { formatUnits } from 'ethers';
 import type { IBalance } from './types';
-
 
 
 export function formatBalance(balance: IBalance, roundToDecimals: number = -1, showCurrency: boolean = true): string | undefined {
@@ -19,18 +16,19 @@ export function formatBalance(balance: IBalance, roundToDecimals: number = -1, s
 }
 
 
-
-	// Helpers to split formatted balance into value and symbol parts
+// Helpers to split formatted balance into value and symbol parts
 export function getBalanceParts(b: IBalance, fractionDigits?: number): { value: string; symbol: string } {
-		try {
-			const formattedRaw = fractionDigits !== undefined ? formatBalance(b, fractionDigits) : formatBalance(b);
-			const formatted = (formattedRaw ?? '').toString();
-			const lastSpace = formatted.lastIndexOf(' ');
-			if (lastSpace > 0) {
-				return { value: formatted.slice(0, lastSpace), symbol: formatted.slice(lastSpace + 1) };
-			}
-			return { value: formatted, symbol: (b?.currency ?? '') as string };
-		} catch (e) {
-			return { value: '', symbol: (b?.currency ?? '') as string };
+	try {
+		const formattedRaw = fractionDigits !== undefined ? formatBalance(b, fractionDigits) : formatBalance(b);
+		const formatted = (formattedRaw ?? '').toString();
+		const lastSpace = formatted.lastIndexOf(' ');
+		if (lastSpace > 0) {
+			return { value: formatted.slice(0, lastSpace), symbol: formatted.slice(lastSpace + 1) };
 		}
+		return { value: formatted, symbol: (b?.currency ?? '') as string };
+	} catch (e) {
+		return { value: '', symbol: (b?.currency ?? '') as string };
 	}
+}
+
+

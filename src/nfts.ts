@@ -222,10 +222,15 @@ async function executeNftOperation<T>(
 }
 
 
-
+function clearLoadingNftCollections(contractsToLoad: string[]) {
+	loadingNftCollections.update(set => {
+		contractsToLoad.forEach(addr => set.delete(addr));
+		return set;
+	});
+}
 
 /**
- * Load collection-level info (name, symbol) for NFT contracts
+ * Load collection-level info (name, symbol) for NFT contracts. Only loads once per contract, does not reload.
  */
 export async function loadNFTCollectionInfos(contractAddresses: string[]): Promise<void> {
 	if (!contractAddresses.length) return;
@@ -255,53 +260,58 @@ export async function loadNFTCollectionInfos(contractAddresses: string[]): Promi
 
 	const p = get(provider);
 	if (!p) {
-		loadingNftCollections.update(set => {
-			contractsToLoad.forEach(addr => set.delete(addr));
-			return set;
-		});
+		clearLoadingNftCollections(contractsToLoad);
 		throw new Error('Provider not available for loading NFT collection info');
 	}
-	
+
+	const standardByAddress = new Map<string, NftStandard>();
+	await Promise.all(contractsToLoad.map(async addr => {
+		standardByAddress.set(addr, await detectNftStandard(addr, p));
+	}));
+
 	const results = await Promise.allSettled(
 		contractsToLoad.map(async (contractAddress) => {
-			const contract = new Contract(contractAddress, erc721ABI, p);
-			const [name, symbol, standard] = await Promise.all([
-				contract.name(),
-				contract.symbol(),
-				detectNftStandard(contractAddress, p)
-			]);
-			return { contractAddress, info: { name, symbol }, standard };
+			let info: INftCollectionInfo | null = null;
+			if (standardByAddress.get(contractAddress) === 'ERC721') {
+				// todo: only do this on ERC721Metadata-supporting contracts
+				try {
+					const contract = new Contract(contractAddress, erc721ABI, p);
+					const [name, symbol] = await Promise.all([
+						contract.name(),
+						contract.symbol()
+					]);
+					info = { name, symbol };
+				} catch (error) {
+					console.debug(`Failed to load ERC721 metadata for ${contractAddress}:`, error instanceof Error ? error.message : error);
+					info = null;
+				}
+			}
+			// For ERC1155 and UNKNOWN standards, info remains null
+			return { contractAddress, info };
 		})
 	);
 
-	// Update stores
+	nftStandards.update(map => {
+		standardByAddress.forEach((standard, contractAddress) => {
+			map.set(contractAddress, standard);
+		});
+		return map;
+	});
+
 	nftCollectionInfos.update(map => {
 		results.forEach((result, index) => {
 			const contractAddress = contractsToLoad[index];
 			if (result.status === 'fulfilled') {
 				map.set(contractAddress, result.value.info);
 			} else {
-				console.warn(`Failed to load collection info for ${contractAddress}:`, result.reason);
+				console.info(`Failed to load collection info for ${contractAddress}:`, result.reason);
 				map.set(contractAddress, null);
 			}
 		});
 		return map;
 	});
 
-	nftStandards.update(map => {
-		results.forEach((result, index) => {
-			const contractAddress = contractsToLoad[index];
-			if (result.status === 'fulfilled') {
-				map.set(contractAddress, result.value.standard);
-			}
-		});
-		return map;
-	});
-
-	loadingNftCollections.update(set => {
-		contractsToLoad.forEach(addr => set.delete(addr));
-		return set;
-	});
+	clearLoadingNftCollections(contractsToLoad);
 }
 
 /**
