@@ -1,4 +1,4 @@
-import { type Readable, derived } from 'svelte/store';
+import { type Readable, derived } from "svelte/store";
 
 /**
  * A derived store that only updates if the derived value is not equal
@@ -9,15 +9,23 @@ import { type Readable, derived } from 'svelte/store';
  * @param equalsFn - Function to compare old and new values (default: strict equality).
  * @returns A derived readable store.
  */
-export function derivedWithEquals<S, T>(stores: Readable<S>, deriveFn: (value: S) => T, equalsFn?: (a: T | undefined, b: T) => boolean): Readable<T>;
+export function derivedWithEquals<S, T>(
+	stores: Readable<S>,
+	deriveFn: (value: S) => T,
+	equalsFn?: (a: T | undefined, b: T) => boolean,
+): Readable<T>;
 export function derivedWithEquals<S extends Readable<any>[], T>(
 	stores: [...S],
 	deriveFn: (values: {
 		[K in keyof S]: S[K] extends Readable<infer U> ? U : never;
 	}) => T,
-	equalsFn?: (a: T | undefined, b: T) => boolean
+	equalsFn?: (a: T | undefined, b: T) => boolean,
 ): Readable<T>;
-export function derivedWithEquals(stores: any, deriveFn: any, equalsFn: (a: any, b: any) => boolean = (a, b) => a === b): Readable<any> {
+export function derivedWithEquals(
+	stores: any,
+	deriveFn: any,
+	equalsFn: (a: any, b: any) => boolean = (a, b) => a === b,
+): Readable<any> {
 	let previous: any;
 	return derived(stores, ($stores: any, set: (value: any) => void) => {
 		const next = deriveFn($stores);

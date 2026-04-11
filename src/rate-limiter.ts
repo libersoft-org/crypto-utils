@@ -6,7 +6,7 @@ export class RateLimiter {
 
 	constructor(
 		private maxRequests: number = 20,
-		private timeWindow: number = 1000 // milliseconds
+		private timeWindow: number = 1000, // milliseconds
 	) {}
 
 	/**
@@ -16,7 +16,9 @@ export class RateLimiter {
 		const now = Date.now();
 
 		// Remove old requests outside the time window
-		this.requestTimes = this.requestTimes.filter(time => now - time < this.timeWindow);
+		this.requestTimes = this.requestTimes.filter(
+			(time) => now - time < this.timeWindow,
+		);
 
 		if (this.requestTimes.length >= this.maxRequests) {
 			const oldestRequest = Math.min(...this.requestTimes);
@@ -24,7 +26,7 @@ export class RateLimiter {
 
 			if (waitTime > 0) {
 				console.log(`[RateLimiter] Rate limit reached, waiting ${waitTime}ms`);
-				await new Promise(resolve => setTimeout(resolve, waitTime));
+				await new Promise((resolve) => setTimeout(resolve, waitTime));
 				return this.waitForSlot(); // Recursive check after waiting
 			}
 		}
@@ -35,14 +37,20 @@ export class RateLimiter {
 	/**
 	 * Get current request rate information
 	 */
-	getStatus(): { currentRequests: number; maxRequests: number; timeWindow: number } {
+	getStatus(): {
+		currentRequests: number;
+		maxRequests: number;
+		timeWindow: number;
+	} {
 		const now = Date.now();
-		this.requestTimes = this.requestTimes.filter(time => now - time < this.timeWindow);
+		this.requestTimes = this.requestTimes.filter(
+			(time) => now - time < this.timeWindow,
+		);
 
 		return {
 			currentRequests: this.requestTimes.length,
 			maxRequests: this.maxRequests,
-			timeWindow: this.timeWindow
+			timeWindow: this.timeWindow,
 		};
 	}
 

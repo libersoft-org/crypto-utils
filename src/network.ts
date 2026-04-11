@@ -1,15 +1,14 @@
-import { get, writable, derived } from 'svelte/store';
-import { localStorageSharedStore } from './utils/svelte-shared-store';
-import { getGuid } from './utils/utils';
-import { defaultNetworks } from './default-networks';
-import type { ICurrency, Guid } from './types';
-import type { ITokenConf } from './tokens';
-import type { INftConf } from './nfts';
+import { get, writable } from "svelte/store";
+import { localStorageSharedStore } from "./utils/svelte-shared-store";
+import { getGuid } from "./utils/utils";
+import { defaultNetworks } from "./default-networks";
+import type { ICurrency, Guid } from "./types";
+import type { ITokenConf } from "./tokens";
+import type { INftConf } from "./nfts";
 
 // Re-export types that UI components need
 export type { ICurrency, ITokenConf, INftConf, Guid };
-import type { IRPCServer, INetworkStatus } from './provider';
-
+import type { IRPCServer } from "./provider";
 
 export interface IDefaultNetwork {
 	name: string;
@@ -29,29 +28,30 @@ export interface INetwork {
 	guid?: Guid;
 	name: string;
 	chainID: number;
-	explorerURL?: string;
+	explorerURL?: string | undefined;
 	currency: ICurrency;
-	rpcURLs?: string[];
+	rpcURLs?: string[] | undefined;
 	tokens?: ITokenConf[];
 	nfts?: INftConf[];
-	selectedRpcUrl?: string;
+	selectedRpcUrl?: string | undefined;
 	testnet?: boolean;
 	coingecko_asset_platform_id?: string;
 }
 
-
-
 export const default_networks = writable<INetwork[]>(
-	defaultNetworks.map(network => ({
-			...network,
-			guid: getGuid(),
-			tokens: network.tokens || [],
-		})));
+	defaultNetworks.map((network) => ({
+		...network,
+		guid: getGuid(),
+		tokens: network.tokens || [],
+	})),
+);
 
-export const networks = localStorageSharedStore<INetwork[]>('networks', []);
-export const selectedNetworkID = localStorageSharedStore<string | null>('selectedNetworkID', null);
+export const networks = localStorageSharedStore<INetwork[]>("networks", []);
+export const selectedNetworkID = localStorageSharedStore<string | null>(
+	"selectedNetworkID",
+	null,
+);
 export const selectedNetwork = writable<INetwork | undefined>();
-
 
 networks.subscribe((nets: INetwork[]) => {
 	let modified = false;
@@ -69,7 +69,11 @@ networks.subscribe((nets: INetwork[]) => {
 			modified = true;
 		}
 		// If selectedRpcUrl is not in the list of rpcURLs, remove it
-		if (net.selectedRpcUrl && net.rpcURLs && !net.rpcURLs.includes(net.selectedRpcUrl)) {
+		if (
+			net.selectedRpcUrl &&
+			net.rpcURLs &&
+			!net.rpcURLs.includes(net.selectedRpcUrl)
+		) {
 			net.selectedRpcUrl = undefined;
 			modified = true;
 		}
@@ -86,7 +90,7 @@ networks.subscribe((nets: INetwork[]) => {
 			}
 			// Backwards compatibility: migrate old nested format {guid, item: {contract_address, token_id}}
 			// to new flat format {guid, contract_address, token_id}
-			if ((nft as any).item && typeof (nft as any).item === 'object') {
+			if ((nft as any).item && typeof (nft as any).item === "object") {
 				const oldNft = nft as any;
 				if (oldNft.item.contract_address) {
 					nft.contract_address = oldNft.item.contract_address;
@@ -104,13 +108,12 @@ networks.subscribe((nets: INetwork[]) => {
 	}
 	if (modified) {
 		setTimeout(() => {
-			networks.update(n => n);
+			networks.update((n) => n);
 		}, 100);
 	}
 });
 
-
-let oldSelectedNetwork: string = 'null';
+let oldSelectedNetwork: string = "null";
 
 selectedNetworkID.subscribe((value: string | null) => {
 	updateSelectedNetwork(value, get(networks));
@@ -120,9 +123,12 @@ networks.subscribe((value: INetwork[]) => {
 	updateSelectedNetwork(get(selectedNetworkID), value);
 });
 
-function updateSelectedNetwork(selectedNetworkID: string | null, networks: INetwork[]): void {
+function updateSelectedNetwork(
+	selectedNetworkID: string | null,
+	networks: INetwork[],
+): void {
 	//console.log('updateSelectedNetwork...');
-	const r = networks.find(n => n.guid === selectedNetworkID);
+	const r = networks.find((n) => n.guid === selectedNetworkID);
 	const rs = JSON.stringify(r);
 	if (rs === oldSelectedNetwork) {
 		return;
@@ -133,7 +139,7 @@ function updateSelectedNetwork(selectedNetworkID: string | null, networks: INetw
 }
 
 export function addNetwork(net: INetwork): boolean {
-	if (get(networks)?.find(n => n.name === net.name)) return false;
+	if (get(networks)?.find((n) => n.name === net.name)) return false;
 	const my_net: INetwork = {
 		guid: getGuid(),
 		name: net.name,
@@ -143,7 +149,7 @@ export function addNetwork(net: INetwork): boolean {
 			...(net.currency.iconURL && { iconURL: net.currency.iconURL }),
 		},
 		explorerURL: net.explorerURL,
-		rpcURLs: net.rpcURLs?.map(url => url),
+		rpcURLs: net.rpcURLs?.map((url) => url),
 		tokens: [],
 	};
 	networksAdd(my_net);
@@ -151,18 +157,18 @@ export function addNetwork(net: INetwork): boolean {
 }
 
 export function editNetwork(net: INetwork): void {
-	networks.update(networks => {
-		const index = networks.findIndex(n => n.guid === net.guid);
+	networks.update((networks) => {
+		const index = networks.findIndex((n) => n.guid === net.guid);
 		if (index !== -1) networks[index] = net;
 		return networks;
 	});
 }
 
 export function deleteNetwork(net: INetwork): void {
-	console.log('Deleting network:', net);
-	console.log('Current networks:', get(networks));
-	networks.update(n => {
-		return n.filter(item => {
+	console.log("Deleting network:", net);
+	console.log("Current networks:", get(networks));
+	networks.update((n) => {
+		return n.filter((item) => {
 			//console.log('Checking network:', item.guid, 'against', net.guid);
 			return item.guid !== net.guid;
 		});
@@ -170,8 +176,8 @@ export function deleteNetwork(net: INetwork): void {
 }
 
 export function addToken(networkGuid: Guid, token: ITokenConf): void {
-	networks.update(networks => {
-		return networks.map(network => {
+	networks.update((networks) => {
+		return networks.map((network) => {
 			if (network.guid === networkGuid) {
 				return {
 					...network,
@@ -184,27 +190,28 @@ export function addToken(networkGuid: Guid, token: ITokenConf): void {
 }
 
 export function editToken(networkGuid: Guid, token: ITokenConf): void {
-	networks.update(networks => {
-		return networks.map(network => {
+	networks.update((networks) => {
+		return networks.map((network) => {
 			if (network.guid === networkGuid) {
 				return {
 					...network,
-					tokens: network.tokens?.map(t => (t.guid === token.guid ? token : t)) || [],
+					tokens:
+						network.tokens?.map((t) => (t.guid === token.guid ? token : t)) ||
+						[],
 				};
 			}
 			return network;
 		});
 	});
 }
-
 
 export function deleteToken(networkGuid: Guid, tokenGuid: Guid): void {
-	networks.update(networks => {
-		return networks.map(network => {
+	networks.update((networks) => {
+		return networks.map((network) => {
 			if (network.guid === networkGuid) {
 				return {
 					...network,
-					tokens: (network.tokens || []).filter(t => t.guid !== tokenGuid),
+					tokens: (network.tokens || []).filter((t) => t.guid !== tokenGuid),
 				};
 			}
 			return network;
@@ -212,10 +219,12 @@ export function deleteToken(networkGuid: Guid, tokenGuid: Guid): void {
 	});
 }
 
-
-export function reorderTokens(networkGuid: Guid, reorderedTokens: ITokenConf[]): void {
-	networks.update(networks => {
-		return networks.map(network => {
+export function reorderTokens(
+	networkGuid: Guid,
+	reorderedTokens: ITokenConf[],
+): void {
+	networks.update((networks) => {
+		return networks.map((network) => {
 			if (network.guid === networkGuid) {
 				return {
 					...network,
@@ -228,8 +237,8 @@ export function reorderTokens(networkGuid: Guid, reorderedTokens: ITokenConf[]):
 }
 
 export function setSelectedRpcUrl(networkGuid: Guid, rpcUrl: string): void {
-	networks.update(networks => {
-		return networks.map(network => {
+	networks.update((networks) => {
+		return networks.map((network) => {
 			if (network.guid === networkGuid) {
 				return {
 					...network,
@@ -253,7 +262,7 @@ export function generateUniqueNetworkName(baseName: string): string {
 	const existingNetworks = get(networks);
 	let counter = 1;
 	let newName = `${baseName} (${counter})`;
-	while (existingNetworks.find(n => n.name === newName)) {
+	while (existingNetworks.find((n) => n.name === newName)) {
 		counter++;
 		newName = `${baseName} (${counter})`;
 	}
@@ -268,11 +277,11 @@ export function replaceAllNetworks(networksData: any[]): void {
 	networks.set(networksWithGuids);
 }
 
-
 export function replaceExistingNetwork(networkToReplace: any): void {
-	networks.update(current => {
-		return current.map(network => {
-			if (network.name === networkToReplace.name) return { ...networkToReplace, guid: network.guid };
+	networks.update((current) => {
+		return current.map((network) => {
+			if (network.name === networkToReplace.name)
+				return { ...networkToReplace, guid: network.guid };
 			return network;
 		});
 	});
@@ -280,32 +289,37 @@ export function replaceExistingNetwork(networkToReplace: any): void {
 
 export function addNetworkWithUniqueName(network: any): void {
 	const uniqueName = generateUniqueNetworkName(network.name);
-	const networkWithUniqueName = { ...network, name: uniqueName, guid: getGuid() };
+	const networkWithUniqueName = {
+		...network,
+		name: uniqueName,
+		guid: getGuid(),
+	};
 	networksAdd(networkWithUniqueName);
 }
-
 
 export function addSingleNetwork(network: any): void {
 	if (!network.guid) network.guid = getGuid();
 	networksAdd(network);
 }
 
-
 export function findNetworkByGuid(guid: Guid): INetwork | undefined {
 	const existingNetworks = get(networks);
-	return existingNetworks.find(n => n.guid === guid);
+	return existingNetworks.find((n) => n.guid === guid);
 }
-
 
 export async function checkRPCServer(server: IRPCServer): Promise<void> {
 	server.checking = true;
 	const startTime = Date.now();
 	try {
-		const isWebSocket = server.url.startsWith('ws://') || server.url.startsWith('wss://');
+		const isWebSocket =
+			server.url.startsWith("ws://") || server.url.startsWith("wss://");
 		if (isWebSocket) await checkWebSocketRPCServer(server, startTime);
 		else await checkHTTPRPCServer(server, startTime);
 	} catch (error) {
-		console.info('Error checking RPC server ' + server.url + ':', (error as Error)?.message);
+		console.info(
+			"Error checking RPC server " + server.url + ":",
+			(error as Error)?.message,
+		);
 		server.latency = null;
 		server.lastBlock = null;
 		server.blockAge = null;
@@ -316,8 +330,12 @@ export async function checkRPCServer(server: IRPCServer): Promise<void> {
 }
 
 // Helper function to make RPC calls with proper timeout handling
-async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
-	if (typeof AbortSignal.timeout === 'function') {
+async function fetchWithTimeout(
+	url: string,
+	options: RequestInit,
+	timeoutMs: number,
+): Promise<Response> {
+	if (typeof AbortSignal.timeout === "function") {
 		// Modern browsers - use native implementation
 		return fetch(url, { ...options, signal: AbortSignal.timeout(timeoutMs) });
 	} else {
@@ -332,36 +350,54 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: nu
 	}
 }
 
-async function checkHTTPRPCServer(server: IRPCServer, startTime: number): Promise<void> {
-	const blockNumberResponse = await fetchWithTimeout(server.url, {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({
-			jsonrpc: '2.0',
-			method: 'eth_blockNumber',
-			params: [],
-			id: 1,
-		}),
-	}, 10000);
-	
-	if (!blockNumberResponse.ok) throw new Error('HTTP ' + blockNumberResponse.status + ': ' + blockNumberResponse.statusText);
+async function checkHTTPRPCServer(
+	server: IRPCServer,
+	startTime: number,
+): Promise<void> {
+	const blockNumberResponse = await fetchWithTimeout(
+		server.url,
+		{
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				jsonrpc: "2.0",
+				method: "eth_blockNumber",
+				params: [],
+				id: 1,
+			}),
+		},
+		10000,
+	);
+
+	if (!blockNumberResponse.ok)
+		throw new Error(
+			"HTTP " +
+				blockNumberResponse.status +
+				": " +
+				blockNumberResponse.statusText,
+		);
 	const blockNumberData = await blockNumberResponse.json();
-	if (blockNumberData.error) throw new Error('RPC Error: ' + blockNumberData.error.message);
+	if (blockNumberData.error)
+		throw new Error("RPC Error: " + blockNumberData.error.message);
 	const blockNumber = parseInt(blockNumberData.result, 16);
 	let blockAge: number | null = null;
-	
+
 	try {
-		const blockResponse = await fetchWithTimeout(server.url, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				jsonrpc: '2.0',
-				method: 'eth_getBlockByNumber',
-				params: [blockNumberData.result, false],
-				id: 2,
-			}),
-		}, 5000);
-		
+		const blockResponse = await fetchWithTimeout(
+			server.url,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					jsonrpc: "2.0",
+					method: "eth_getBlockByNumber",
+					params: [blockNumberData.result, false],
+					id: 2,
+				}),
+			},
+			5000,
+		);
+
 		if (blockResponse.ok) {
 			const blockData = await blockResponse.json();
 			if (!blockData.error && blockData.result && blockData.result.timestamp) {
@@ -371,9 +407,12 @@ async function checkHTTPRPCServer(server: IRPCServer, startTime: number): Promis
 			}
 		}
 	} catch (blockError) {
-		console.info('Could not get block details for ' + server.url + ':', blockError);
+		console.info(
+			"Could not get block details for " + server.url + ":",
+			blockError,
+		);
 	}
-	
+
 	const endTime = Date.now();
 	server.latency = endTime - startTime;
 	server.lastBlock = blockNumber;
@@ -381,7 +420,10 @@ async function checkHTTPRPCServer(server: IRPCServer, startTime: number): Promis
 	server.isAlive = true;
 }
 
-async function checkWebSocketRPCServer(server: IRPCServer, startTime: number): Promise<void> {
+async function checkWebSocketRPCServer(
+	server: IRPCServer,
+	startTime: number,
+): Promise<void> {
 	return new Promise<void>((resolve, reject) => {
 		const ws = new WebSocket(server.url);
 		let resolved = false;
@@ -394,32 +436,32 @@ async function checkWebSocketRPCServer(server: IRPCServer, startTime: number): P
 			if (!resolved) {
 				resolved = true;
 				cleanup();
-				reject(new Error('WebSocket connection timeout'));
+				reject(new Error("WebSocket connection timeout"));
 			}
 		}, 10000);
 		ws.onopen = () => {
 			ws.send(
 				JSON.stringify({
-					jsonrpc: '2.0',
-					method: 'eth_blockNumber',
+					jsonrpc: "2.0",
+					method: "eth_blockNumber",
 					params: [],
 					id: 1,
-				})
+				}),
 			);
 		};
-		ws.onmessage = async event => {
+		ws.onmessage = async (event) => {
 			try {
 				const data = JSON.parse(event.data);
 				if (data.id === 1) {
-					if (data.error) throw new Error('RPC error: ' + data.error.message);
+					if (data.error) throw new Error("RPC error: " + data.error.message);
 					blockNumber = parseInt(data.result, 16);
 					ws.send(
 						JSON.stringify({
-							jsonrpc: '2.0',
-							method: 'eth_getBlockByNumber',
+							jsonrpc: "2.0",
+							method: "eth_getBlockByNumber",
 							params: [data.result, false],
 							id: 2,
-						})
+						}),
 					);
 				} else if (data.id === 2) {
 					if (!data.error && data.result && data.result.timestamp) {
@@ -448,59 +490,64 @@ async function checkWebSocketRPCServer(server: IRPCServer, startTime: number): P
 				}
 			}
 		};
-		ws.onerror = error => {
+		ws.onerror = (error) => {
 			if (!resolved) {
 				resolved = true;
 				clearTimeout(timeout);
 				cleanup();
-				reject(new Error('WebSocket error: ' + error));
+				reject(new Error("WebSocket error: " + error));
 			}
 		};
-		ws.onclose = event => {
+		ws.onclose = (event) => {
 			if (!resolved) {
 				resolved = true;
 				clearTimeout(timeout);
-				if (event.code !== 1000) reject(new Error('WebSocket closed with code ' + event.code + ': ' + event.reason));
+				if (event.code !== 1000)
+					reject(
+						new Error(
+							"WebSocket closed with code " + event.code + ": " + event.reason,
+						),
+					);
 			}
 		};
 	});
 }
 
 export async function checkAllRPCServers(servers: IRPCServer[]): Promise<void> {
-	const promises = servers.map(server => checkRPCServer(server));
+	const promises = servers.map((server) => checkRPCServer(server));
 	await Promise.all(promises);
 }
 
 export function formatLatency(latency: number | null): string {
-	if (latency === null) return 'N/A';
-	return latency + 'ms';
+	if (latency === null) return "N/A";
+	return latency + "ms";
 }
 
 export function formatBlockNumber(blockNumber: number | null): string {
-	if (blockNumber === null) return 'N/A';
+	if (blockNumber === null) return "N/A";
 	return blockNumber.toLocaleString();
 }
 
 export function formatBlockAge(blockAge: number | null): string {
-	if (blockAge === null) return 'N/A';
-	if (blockAge < 60) return blockAge + 's ago';
+	if (blockAge === null) return "N/A";
+	if (blockAge < 60) return blockAge + "s ago";
 	else if (blockAge < 3600) {
 		const minutes = Math.floor(blockAge / 60);
-		return minutes + 'm ago';
+		return minutes + "m ago";
 	} else if (blockAge < 86400) {
 		const hours = Math.floor(blockAge / 3600);
 		const minutes = Math.floor((blockAge % 3600) / 60);
-		return hours + 'h ' + minutes + 'm ago';
+		return hours + "h " + minutes + "m ago";
 	} else {
 		const days = Math.floor(blockAge / 86400);
 		const hours = Math.floor((blockAge % 86400) / 3600);
-		return days + 'd ' + hours + 'h ago';
+		return days + "d " + hours + "h ago";
 	}
 }
 
 export function getRPCServersFromNetwork(network: INetwork): IRPCServer[] {
 	if (!network?.rpcURLs) return [];
-	return network.rpcURLs.map(url => ({
+	return network.rpcURLs.map((url) => ({
 		url,
 		latency: null,
 		lastBlock: null,
@@ -514,10 +561,14 @@ export function reorderNetworks(reorderedNetworks: INetwork[]): void {
 	networks.set(reorderedNetworks);
 }
 
-export function addNFT(networkGuid: Guid, contract_address: string, token_id: string): void {
-	console.log('addNFT...')
-	networks.update(nets => {
-		const net = nets.find(n => n.guid === networkGuid);
+export function addNFT(
+	networkGuid: Guid,
+	contract_address: string,
+	token_id: string,
+): void {
+	console.log("addNFT...");
+	networks.update((nets) => {
+		const net = nets.find((n) => n.guid === networkGuid);
 		if (!net) return nets;
 		if (!net.nfts) net.nfts = [];
 		const newNft: INftConf = {
@@ -528,23 +579,34 @@ export function addNFT(networkGuid: Guid, contract_address: string, token_id: st
 		net.nfts.push(newNft);
 		return nets;
 	});
-	console.log('Added NFT to network', networkGuid, ':', contract_address, token_id);
+	console.log(
+		"Added NFT to network",
+		networkGuid,
+		":",
+		contract_address,
+		token_id,
+	);
 }
 
 export function deleteNFT(networkGuid: Guid, nftGuid: Guid): void {
-	networks.update(nets => {
-		const net = nets.find(n => n.guid === networkGuid);
+	networks.update((nets) => {
+		const net = nets.find((n) => n.guid === networkGuid);
 		if (!net?.nfts) return nets;
-		net.nfts = net.nfts.filter(nft => nft.guid !== nftGuid);
+		net.nfts = net.nfts.filter((nft) => nft.guid !== nftGuid);
 		return nets;
 	});
 }
 
-export function editNFT(networkGuid: Guid, nftGuid: Guid, contract_address: string, token_id: string): void {
-	networks.update(nets => {
-		const net = nets.find(n => n.guid === networkGuid);
+export function editNFT(
+	networkGuid: Guid,
+	nftGuid: Guid,
+	contract_address: string,
+	token_id: string,
+): void {
+	networks.update((nets) => {
+		const net = nets.find((n) => n.guid === networkGuid);
 		if (!net?.nfts) return nets;
-		const nft = net.nfts.find(n => n.guid === nftGuid);
+		const nft = net.nfts.find((n) => n.guid === nftGuid);
 		if (nft) {
 			nft.contract_address = contract_address;
 			nft.token_id = token_id;
@@ -553,9 +615,12 @@ export function editNFT(networkGuid: Guid, nftGuid: Guid, contract_address: stri
 	});
 }
 
-export function reorderNFTs(networkGuid: Guid, reorderedNFTs: INftConf[]): void {
-	networks.update(networks => {
-		return networks.map(network => {
+export function reorderNFTs(
+	networkGuid: Guid,
+	reorderedNFTs: INftConf[],
+): void {
+	networks.update((networks) => {
+		return networks.map((network) => {
 			if (network.guid === networkGuid) {
 				return {
 					...network,
@@ -567,25 +632,23 @@ export function reorderNFTs(networkGuid: Guid, reorderedNFTs: INftConf[]): void 
 	});
 }
 
-
 export function networksAdd(net: INetwork): void {
-	networks.update(n => {
+	networks.update((n) => {
 		n.push(net);
 		return n;
 	});
-	console.log('Added network:', net);
-	console.log('get(selectedNetworkID):', get(selectedNetworkID));
-	if (!get(selectedNetworkID))
-	{
-		console.log('Setting selectedNetworkID to new network');
-		selectedNetworkID.set(net.guid??null);
+	console.log("Added network:", net);
+	console.log("get(selectedNetworkID):", get(selectedNetworkID));
+	if (!get(selectedNetworkID)) {
+		console.log("Setting selectedNetworkID to new network");
+		selectedNetworkID.set(net.guid ?? null);
 	}
 }
 
-
 networks.subscribe((nets: INetwork[]) => {
-	if (!nets.find(n => n.guid === get(selectedNetworkID))) {
-		if (nets.length > 0) selectedNetworkID.set(nets[0].guid ?? null);
+	if (!nets.find((n) => n.guid === get(selectedNetworkID))) {
+		const firstNet = nets[0];
+		if (firstNet) selectedNetworkID.set(firstNet.guid ?? null);
 		else selectedNetworkID.set(null);
 	}
 });

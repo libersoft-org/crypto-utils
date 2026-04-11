@@ -31,16 +31,20 @@
   "typecheck": "tsc --noEmit"
  },
  "dependencies": {
-  "ethers": "^6.15.0",
-  "@trezor/connect": "^9.0.0",
-  "@trezor/connect-web": "^9.0.0",
-  "@ledgerhq/hw-transport-webhid": "^6.0.0",
-  "@ledgerhq/hw-transport-webusb": "^6.0.0",
-  "@ledgerhq/hw-app-eth": "^6.0.0",
-  "node-localstorage": "^3.0.5"
+  "@ledgerhq/hw-app-eth": "^7.6.2",
+  "@ledgerhq/hw-transport-webhid": "^6.34.0",
+  "@ledgerhq/hw-transport-webusb": "^6.33.0",
+  "@trezor/connect": "^9.7.2",
+  "@trezor/connect-web": "^9.7.2",
+  "ethers": "^6.16.0",
+  "node-localstorage": "^3.0.5",
+  "prettier": "^3.8.2",
+  "prettier-plugin-svelte": "^3.5.1"
  },
  "devDependencies": {
-  "typescript": "^5.0.0"
+  "typescript": "^6.0.2"
  },
-   "peerDependencies": { "svelte": "5.20.0" }
+ "peerDependencies": {
+  "svelte": "5.55.3"
+ }
 }

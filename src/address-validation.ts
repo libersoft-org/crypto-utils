@@ -3,17 +3,19 @@
 /**
  * Validates if a string is a valid Ethereum contract address
  * NOTE: This validation does NOT trim the input, as the actual usage code doesn't trim either
- * 
+ *
  * @param address - The address string to validate (exactly as it will be used)
  * @returns boolean - True if the address is valid
  */
-export function isValidContractAddress(address: string | null | undefined): boolean {
-	if (!address || typeof address !== 'string') {
+export function isValidContractAddress(
+	address: string | null | undefined,
+): boolean {
+	if (!address || typeof address !== "string") {
 		return false;
 	}
 
 	// Must start with 0x (no trimming - if there's whitespace, it should fail)
-	if (!address.startsWith('0x')) {
+	if (!address.startsWith("0x")) {
 		return false;
 	}
 
@@ -30,7 +32,7 @@ export function isValidContractAddress(address: string | null | undefined): bool
 	}
 
 	// Additional check: shouldn't be the zero address
-	if (address.toLowerCase() === '0x0000000000000000000000000000000000000000') {
+	if (address.toLowerCase() === "0x0000000000000000000000000000000000000000") {
 		return false;
 	}
 

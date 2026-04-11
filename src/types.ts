@@ -1,4 +1,3 @@
-
 /**
  * Contract address type for type safety across the codebase
  */
@@ -11,13 +10,13 @@ export type Guid = string;
 
 export interface IAmount {
 	amount: bigint;
-	decimals?: number;
+	decimals?: number | undefined;
 }
 
 export interface IBalance {
 	amount: bigint;
 	currency: string;
-	decimals?: number;
+	decimals?: number | undefined;
 }
 
 export interface IBalanceWithFiat {
@@ -26,11 +25,9 @@ export interface IBalanceWithFiat {
 	timestamp: Date;
 }
 
-
 export interface ICurrency {
 	name?: string;
 	symbol?: string;
 	contract_address?: string;
-	iconURL?: string;
+	iconURL?: string | undefined;
 }
-

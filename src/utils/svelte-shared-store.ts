@@ -1,16 +1,19 @@
-import { writable, get, type Writable } from 'svelte/store';
+import { writable, get, type Writable } from "svelte/store";
 
 // Storage abstraction - use localStorage in browser, node-localstorage in Node.js
 let storage: Storage;
-if (typeof window !== 'undefined' && window.localStorage) {
+if (typeof window !== "undefined" && window.localStorage) {
 	storage = window.localStorage;
 } else {
 	// Node.js fallback
-	const { LocalStorage } = require('node-localstorage');
-	storage = new LocalStorage('./crypto-utils-storage');
+	const { LocalStorage } = require("node-localstorage");
+	storage = new LocalStorage("./crypto-utils-storage");
 }
 
-export function localStorageSharedStore<T>(name: string, default_: T): Writable<T> {
+export function localStorageSharedStore<T>(
+	name: string,
+	default_: T,
+): Writable<T> {
 	function setStorage(value: T): void {
 		const str = JSON.stringify(value);
 		//console.log('SAVE', name, str);
@@ -31,7 +34,7 @@ export function localStorageSharedStore<T>(name: string, default_: T): Writable<
 	}
 
 	// Create a writable store with a start function that properly handles the storage event listener
-	const internalStore = writable<T>(default_, set => {
+	const internalStore = writable<T>(default_, (set) => {
 		// Initialize with the value from localStorage
 		set(getStorage());
 
@@ -46,14 +49,14 @@ export function localStorageSharedStore<T>(name: string, default_: T): Writable<
 		}
 
 		// Add the event listener (only in browser)
-		if (typeof window !== 'undefined') {
-			window.addEventListener('storage', handleStorageEvent);
+		if (typeof window !== "undefined") {
+			window.addEventListener("storage", handleStorageEvent);
 		}
 
 		// Return the unsubscribe function that removes the event listener
 		return () => {
-			if (typeof window !== 'undefined') {
-				window.removeEventListener('storage', handleStorageEvent);
+			if (typeof window !== "undefined") {
+				window.removeEventListener("storage", handleStorageEvent);
 			}
 		};
 	});
@@ -80,7 +83,10 @@ export function localStorageSharedStore<T>(name: string, default_: T): Writable<
 	return store;
 }
 
-export function localStorageReadOnceSharedStore<T>(name: string, default_: T): Writable<T> {
+export function localStorageReadOnceSharedStore<T>(
+	name: string,
+	default_: T,
+): Writable<T> {
 	function setStorage(value: T): void {
 		const str = JSON.stringify(value);
 		//console.log('SAVE', name, str);
@@ -91,7 +97,7 @@ export function localStorageReadOnceSharedStore<T>(name: string, default_: T): W
 		const item = storage.getItem(name);
 		let result: T = default_;
 		try {
-			if (item !== 'undefined' && item) result = JSON.parse(item) as T;
+			if (item !== "undefined" && item) result = JSON.parse(item) as T;
 			if (!result) result = default_;
 		} catch (e) {
 			console.log('trying to parse: "' + item + '"');
@@ -101,7 +107,7 @@ export function localStorageReadOnceSharedStore<T>(name: string, default_: T): W
 	}
 
 	// Create a writable store with a start function that only sets the initial value
-	const internalStore = writable<T>(default_, set => {
+	const internalStore = writable<T>(default_, (set) => {
 		// Initialize with the value from localStorage
 		set(getStorage());
 

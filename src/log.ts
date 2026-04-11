@@ -1,29 +1,31 @@
-import { localStorageSharedStore } from './utils/svelte-shared-store.js';
-import { provider } from './provider.js';
-import { selectedNetwork, type INetwork } from './network.js';
-import { get } from 'svelte/store';
+import { localStorageSharedStore } from "./utils/svelte-shared-store.js";
+import { provider } from "./provider.js";
+import { selectedNetwork, type INetwork } from "./network.js";
+import { get } from "svelte/store";
 
-export type TxStatus = 'Not sent' | 'Pending' | 'Success' | 'Error';
+export type TxStatus = "Not sent" | "Pending" | "Success" | "Error";
 
 export interface TxLogEntry {
 	id: string; // Unique ID for the transaction
-	hash?: string; // Transaction hash (when available)
+	hash?: string | undefined; // Transaction hash (when available)
 	address: string; // Recipient address
 	amount: string; // Amount in wei/smallest unit as string
 	currency: string; // Currency symbol
 	decimals: number; // Currency decimals
-	contractAddress?: string; // For token transactions
+	contractAddress?: string | undefined; // For token transactions
 	status: TxStatus;
 	timestamp: number; // Unix timestamp
 	networkId: string; // Network GUID
 	chainId: number; // Chain ID
-	blockNumber?: number; // Block number (when confirmed)
-	gasUsed?: string; // Gas used (when confirmed) as string
-	error?: string; // Error message if failed
+	blockNumber?: number | undefined; // Block number (when confirmed)
+	gasUsed?: string | undefined; // Gas used (when confirmed) as string
+	error?: string | undefined; // Error message if failed
 }
 
 // Store for transaction log - keyed by network GUID
-export const transactionLog = localStorageSharedStore<{ [networkId: string]: TxLogEntry[] }>('transaction_log', {});
+export const transactionLog = localStorageSharedStore<{
+	[networkId: string]: TxLogEntry[];
+}>("transaction_log", {});
 
 /**
  * Generate a unique transaction ID
@@ -49,9 +51,17 @@ export function getTxGasUsedAsBigInt(tx: TxLogEntry): bigint | undefined {
 /**
  * Add a new transaction to the log
  */
-export function addTransactionToLog(network: INetwork, address: string, amount: bigint, currency: string, decimals: number, contractAddress?: string, hash?: string): string {
+export function addTransactionToLog(
+	network: INetwork,
+	address: string,
+	amount: bigint,
+	currency: string,
+	decimals: number,
+	contractAddress?: string,
+	hash?: string,
+): string {
 	if (!network) {
-		throw new Error('No network selected');
+		throw new Error("No network selected");
 	}
 
 	const txId = generateTxId();
@@ -63,18 +73,18 @@ export function addTransactionToLog(network: INetwork, address: string, amount: 
 		currency,
 		decimals,
 		contractAddress,
-		status: hash ? 'Pending' : 'Not sent',
+		status: hash ? "Pending" : "Not sent",
 		timestamp: Date.now(),
 		networkId: network.guid!,
 		chainId: network.chainID!,
 	};
 
-	transactionLog.update(log => {
+	transactionLog.update((log) => {
 		if (!log[network.guid!]) {
 			log[network.guid!] = [];
 		}
 		// Add to beginning of array (newest first)
-		log[network.guid!].unshift(newTx);
+		log[network.guid!]!.unshift(newTx);
 		return log;
 	});
 
@@ -84,30 +94,52 @@ export function addTransactionToLog(network: INetwork, address: string, amount: 
 /**
  * Update transaction status
  */
-export function updateTransactionStatus(txId: string, status: TxStatus, hash?: string, blockNumber?: number, gasUsed?: bigint, error?: string): void {
-	console.log('🔄 Updating transaction status:', { txId, status, hash, blockNumber, gasUsed: gasUsed?.toString(), error });
+export function updateTransactionStatus(
+	txId: string,
+	status: TxStatus,
+	hash?: string,
+	blockNumber?: number,
+	gasUsed?: bigint,
+	error?: string,
+): void {
+	console.log("🔄 Updating transaction status:", {
+		txId,
+		status,
+		hash,
+		blockNumber,
+		gasUsed: gasUsed?.toString(),
+		error,
+	});
 
 	const network = get(selectedNetwork);
 	if (!network) {
-		console.error('No network selected for transaction update');
+		console.error("No network selected for transaction update");
 		return;
 	}
 
-	transactionLog.update(log => {
+	transactionLog.update((log) => {
 		const networkLog = log[network.guid!];
 		if (!networkLog) {
-			console.error('No transactions found for network:', network.guid);
+			console.error("No transactions found for network:", network.guid);
 			return log;
 		}
 
-		const txIndex = networkLog.findIndex(tx => tx.id === txId);
+		const txIndex = networkLog.findIndex((tx) => tx.id === txId);
 		if (txIndex === -1) {
-			console.error('Transaction not found:', txId);
+			console.error("Transaction not found:", txId);
 			return log;
 		}
 
 		const tx = networkLog[txIndex];
-		console.log('📝 Before update:', { id: tx.id, status: tx.status, hash: tx.hash });
+		if (!tx) {
+			console.error("Transaction not found by index");
+			return log;
+		}
+		console.log("📝 Before update:", {
+			id: tx.id,
+			status: tx.status,
+			hash: tx.hash,
+		});
 
 		// Create a new transaction object (immutable update)
 		const updatedTx: TxLogEntry = {
@@ -119,7 +151,12 @@ export function updateTransactionStatus(txId: string, status: TxStatus, hash?: s
 			error: error || tx.error,
 		};
 
-		console.log('✅ After update:', { id: updatedTx.id, status: updatedTx.status, hash: updatedTx.hash, blockNumber: updatedTx.blockNumber });
+		console.log("✅ After update:", {
+			id: updatedTx.id,
+			status: updatedTx.status,
+			hash: updatedTx.hash,
+			blockNumber: updatedTx.blockNumber,
+		});
 
 		// Create new array with updated transaction
 		const newNetworkLog = [...networkLog];
@@ -131,7 +168,7 @@ export function updateTransactionStatus(txId: string, status: TxStatus, hash?: s
 			[network.guid!]: newNetworkLog,
 		};
 
-		console.log('🔄 Store updated with new log object');
+		console.log("🔄 Store updated with new log object");
 		return newLog;
 	});
 }
@@ -151,78 +188,108 @@ export function getCurrentNetworkTransactions(): TxLogEntry[] {
  * Refresh transaction status from blockchain
  */
 export async function refreshTransactionStatus(txId: string): Promise<void> {
-	console.log('🔄 Refreshing transaction status for:', txId);
+	console.log("🔄 Refreshing transaction status for:", txId);
 
 	const network = get(selectedNetwork);
 	if (!network) {
-		console.error('No network selected for transaction refresh');
+		console.error("No network selected for transaction refresh");
 		return;
 	}
 
 	const log = get(transactionLog);
 	const networkLog = log[network.guid!];
 	if (!networkLog) {
-		console.error('No transactions found for network:', network.guid);
+		console.error("No transactions found for network:", network.guid);
 		return;
 	}
 
-	const tx = networkLog.find(t => t.id === txId);
+	const tx = networkLog.find((t) => t.id === txId);
 	if (!tx || !tx.hash) {
-		console.error('Transaction not found or no hash available:', txId);
+		console.error("Transaction not found or no hash available:", txId);
 		return;
 	}
 
-	console.log('🔍 Checking transaction:', { id: txId, hash: tx.hash, currentStatus: tx.status });
+	console.log("🔍 Checking transaction:", {
+		id: txId,
+		hash: tx.hash,
+		currentStatus: tx.status,
+	});
 
 	try {
 		const currentProvider = get(provider);
 		if (!currentProvider) {
-			console.error('No provider available');
+			console.error("No provider available");
 			return;
 		}
 
-		console.log('📡 Getting transaction receipt for hash:', tx.hash);
+		console.log("📡 Getting transaction receipt for hash:", tx.hash);
 
 		// Get transaction receipt
 		const receipt = await currentProvider.getTransactionReceipt(tx.hash);
 
-		console.log('📋 Receipt received:', receipt);
+		console.log("📋 Receipt received:", receipt);
 
 		if (receipt) {
 			// Transaction is confirmed
-			const status: TxStatus = receipt.status === 1 ? 'Success' : 'Error';
-			console.log('✅ Transaction confirmed with status:', status, 'Receipt status:', receipt.status);
+			const status: TxStatus = receipt.status === 1 ? "Success" : "Error";
+			console.log(
+				"✅ Transaction confirmed with status:",
+				status,
+				"Receipt status:",
+				receipt.status,
+			);
 
-			updateTransactionStatus(txId, status, tx.hash, receipt.blockNumber, receipt.gasUsed, receipt.status === 0 ? 'Transaction failed' : undefined);
+			updateTransactionStatus(
+				txId,
+				status,
+				tx.hash,
+				receipt.blockNumber,
+				receipt.gasUsed,
+				receipt.status === 0 ? "Transaction failed" : undefined,
+			);
 
-			console.log('🔄 Forcing store notification...');
+			console.log("🔄 Forcing store notification...");
 			// Force store notification by triggering reactivity
-			transactionLog.update(log => ({ ...log }));
+			transactionLog.update((log) => ({ ...log }));
 		} else {
-			console.log('⏳ No receipt yet, checking if transaction exists...');
+			console.log("⏳ No receipt yet, checking if transaction exists...");
 			// Check if transaction exists but is not confirmed yet
 			const txResponse = await currentProvider.getTransaction(tx.hash);
 			if (txResponse) {
-				console.log('🔄 Transaction exists but not confirmed yet');
+				console.log("🔄 Transaction exists but not confirmed yet");
 				// Transaction exists but not confirmed yet
-				updateTransactionStatus(txId, 'Pending');
+				updateTransactionStatus(txId, "Pending");
 			} else {
-				console.log('❌ Transaction not found on blockchain');
+				console.log("❌ Transaction not found on blockchain");
 				// Transaction not found - might have been dropped
-				updateTransactionStatus(txId, 'Error', tx.hash, undefined, undefined, 'Transaction not found');
+				updateTransactionStatus(
+					txId,
+					"Error",
+					tx.hash,
+					undefined,
+					undefined,
+					"Transaction not found",
+				);
 			}
 
-			console.log('🔄 Forcing store notification...');
+			console.log("🔄 Forcing store notification...");
 			// Force store notification by triggering reactivity
-			transactionLog.update(log => ({ ...log }));
+			transactionLog.update((log) => ({ ...log }));
 		}
 	} catch (error) {
-		console.error('❌ Error refreshing transaction status:', error);
-		updateTransactionStatus(txId, 'Error', tx.hash, undefined, undefined, error instanceof Error ? error.message : 'Unknown error');
+		console.error("❌ Error refreshing transaction status:", error);
+		updateTransactionStatus(
+			txId,
+			"Error",
+			tx.hash,
+			undefined,
+			undefined,
+			error instanceof Error ? error.message : "Unknown error",
+		);
 
-		console.log('🔄 Forcing store notification after error...');
+		console.log("🔄 Forcing store notification after error...");
 		// Force store notification by triggering reactivity
-		transactionLog.update(log => ({ ...log }));
+		transactionLog.update((log) => ({ ...log }));
 	}
 }
 
@@ -233,7 +300,7 @@ export function clearCurrentNetworkTransactions(): void {
 	const network = get(selectedNetwork);
 	if (!network) return;
 
-	transactionLog.update(log => {
+	transactionLog.update((log) => {
 		delete log[network.guid!];
 		return log;
 	});
@@ -246,11 +313,11 @@ export function removeTransaction(txId: string): void {
 	const network = get(selectedNetwork);
 	if (!network) return;
 
-	transactionLog.update(log => {
+	transactionLog.update((log) => {
 		const networkLog = log[network.guid!];
 		if (!networkLog) return log;
 
-		const txIndex = networkLog.findIndex(tx => tx.id === txId);
+		const txIndex = networkLog.findIndex((tx) => tx.id === txId);
 		if (txIndex !== -1) {
 			networkLog.splice(txIndex, 1);
 		}

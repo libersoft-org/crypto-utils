@@ -1,19 +1,18 @@
 /* cryptocurrency balance management for chain-native currency (e.g., ETH, BNB, MATIC) */
 
-import { get, writable } from 'svelte/store';
-import { selectedNetwork } from './network';
-import { selectedAddress } from './wallet';
-import { provider } from './provider';
-import type { IBalance, IBalanceWithFiat } from './types';
-import { updateAllFiats } from './fiat';
+import { get, writable } from "svelte/store";
+import { selectedNetwork } from "./network";
+import { selectedAddress } from "./wallet";
+import { provider } from "./provider";
+import type { IBalance, IBalanceWithFiat } from "./types";
+import { updateAllFiats } from "./fiat";
 export type { IBalance };
 export let nativeBalance = writable<IBalanceWithFiat | null>(null);
 export let isLoadingNativeBalance = writable(false);
 
-
 export async function refreshBalance() {
 	const addr = get(selectedAddress);
-	console.log('Refreshing native balance for', addr?.address);
+	console.log("Refreshing native balance for", addr?.address);
 	isLoadingNativeBalance.set(true);
 	try {
 		const v = await getBalance();
@@ -22,7 +21,7 @@ export async function refreshBalance() {
 			nativeBalance.set({
 				crypto: v,
 				fiat: null, // Will be updated by updateAllFiats()
-				timestamp: new Date()
+				timestamp: new Date(),
 			});
 			// Update fiat conversion after successful balance refresh
 			await updateAllFiats();
@@ -32,27 +31,25 @@ export async function refreshBalance() {
 	}
 }
 
-
 export async function getBalance(): Promise<IBalance | null> {
 	const p = get(provider);
 	const net = get(selectedNetwork);
 	const addr = get(selectedAddress);
 	if (!net || !p || !addr) {
-		console.error('Network, provider, or address not set');
+		console.error("Network, provider, or address not set");
 		return null;
 	}
-	console.log('Getting balance for:', addr.address);
+	console.log("Getting balance for:", addr.address);
 	try {
 		const balanceWei = await p.getBalance(addr.address);
-		console.log('Balance fetched:', balanceWei, net.currency.symbol);
+		console.log("Balance fetched:", balanceWei, net.currency.symbol);
 		return {
 			amount: balanceWei,
-			currency: net.currency.symbol || 'Unknown',
-			decimals: 18
+			currency: net.currency.symbol || "Unknown",
+			decimals: 18,
 		};
 	} catch (error) {
-		console.error('Error while getting balance:', error);
+		console.error("Error while getting balance:", error);
 		return null;
 	}
 }
-

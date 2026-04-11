@@ -1,2 +1,3 @@
 .dev_intention
 node_modules/
+.secret_git

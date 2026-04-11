@@ -1,14 +1,24 @@
-import { get, writable, type Writable } from 'svelte/store';
-import { JsonRpcProvider, WebSocketProvider } from 'ethers';
-import { selectedNetwork, getSelectedRpcUrl, setSelectedRpcUrl } from './network';
-import { derivedWithEquals } from './utils/derivedWithEquals';
-import { createRateLimitedProvider, RateLimitedJsonRpcProvider, RateLimitedWebSocketProvider } from './rate-limited-providers';
+import { get, writable, type Writable } from "svelte/store";
+import { WebSocketProvider } from "ethers";
+import {
+	selectedNetwork,
+	getSelectedRpcUrl,
+	setSelectedRpcUrl,
+} from "./network";
+import { derivedWithEquals } from "./utils/derivedWithEquals";
+import {
+	createRateLimitedProvider,
+	RateLimitedJsonRpcProvider,
+	RateLimitedWebSocketProvider,
+} from "./rate-limited-providers";
 
 // Re-export rate-limited provider classes and utilities
-export { RateLimitedJsonRpcProvider, RateLimitedWebSocketProvider, createRateLimitedProvider } from './rate-limited-providers';
-export { RateLimiter } from './rate-limiter';
-
-
+export {
+	RateLimitedJsonRpcProvider,
+	RateLimitedWebSocketProvider,
+	createRateLimitedProvider,
+} from "./rate-limited-providers";
+export { RateLimiter } from "./rate-limiter";
 
 export interface IRPCServer {
 	url: string;
@@ -19,19 +29,21 @@ export interface IRPCServer {
 	checking?: boolean;
 }
 
-
 export interface INetworkStatus {
-	color: 'red' | 'orange' | 'green';
+	color: "red" | "orange" | "green";
 	text: string;
 }
 
-
-
-
-
-export const status = writable<INetworkStatus>({ color: 'red', text: 'No connection' });
+export const status = writable<INetworkStatus>({
+	color: "red",
+	text: "No connection",
+});
 export const rpcURL = writable<string | null>(null);
-export const provider: Writable<RateLimitedJsonRpcProvider | RateLimitedWebSocketProvider | null> = writable<RateLimitedJsonRpcProvider | RateLimitedWebSocketProvider | null>(null);
+export const provider: Writable<
+	RateLimitedJsonRpcProvider | RateLimitedWebSocketProvider | null
+> = writable<RateLimitedJsonRpcProvider | RateLimitedWebSocketProvider | null>(
+	null,
+);
 export const availableRPCURLs = writable<string[]>([]);
 let reconnectionTimer: ReturnType<typeof setTimeout> | undefined;
 let isManualRpcSelection = false; // Flag to prevent automatic RPC overrides
@@ -45,11 +57,11 @@ let providerData = derivedWithEquals(
 	},
 	(a, b) => {
 		return a?.network?.guid === b?.network?.guid && a?.rpcURL === b?.rpcURL;
-	}
+	},
 );
 
 export function isWebSocketUrl(url: string): boolean {
-	return url.startsWith('ws://') || url.startsWith('wss://');
+	return url.startsWith("ws://") || url.startsWith("wss://");
 }
 
 /**
@@ -57,19 +69,18 @@ export function isWebSocketUrl(url: string): boolean {
  * @returns Promise that resolves when provider status is 'green' (connected)
  */
 export async function waitForProviderReady(): Promise<void> {
-
 	//await new Promise(resolve => setTimeout(resolve, 5000));
 
 	const currentStatus = get(status);
-	if (currentStatus.color === 'green') {
+	if (currentStatus.color === "green") {
 		return; // Already connected
 	}
-	
-	console.log('Waiting for provider to be ready...');
+
+	console.log("Waiting for provider to be ready...");
 	return new Promise((resolve) => {
 		const unsubscribe = status.subscribe((currentStatus) => {
-			if (currentStatus.color === 'green') {
-				console.log('Provider is ready!');
+			if (currentStatus.color === "green") {
+				console.log("Provider is ready!");
 				unsubscribe();
 				resolve();
 			}
@@ -80,29 +91,43 @@ export async function waitForProviderReady(): Promise<void> {
 export function isValidWebSocketUrl(url: string): boolean {
 	try {
 		const parsed = new URL(url);
-		return parsed.protocol === 'ws:' || parsed.protocol === 'wss:';
+		return parsed.protocol === "ws:" || parsed.protocol === "wss:";
 	} catch {
 		return false;
 	}
 }
 
-function createProvider(url: string, chainId: number): RateLimitedJsonRpcProvider | RateLimitedWebSocketProvider {
+function createProvider(
+	url: string,
+	chainId: number,
+): RateLimitedJsonRpcProvider | RateLimitedWebSocketProvider {
 	if (isWebSocketUrl(url)) {
-		if (!isValidWebSocketUrl(url)) throw new Error('Invalid WebSocket URL format');
-		return createRateLimitedProvider(url, chainId, 15, 1000) as RateLimitedWebSocketProvider;
+		if (!isValidWebSocketUrl(url))
+			throw new Error("Invalid WebSocket URL format");
+		return createRateLimitedProvider(
+			url,
+			chainId,
+			15,
+			1000,
+		) as RateLimitedWebSocketProvider;
 	} else {
-		return createRateLimitedProvider(url, chainId, 15, 1000) as RateLimitedJsonRpcProvider;
+		return createRateLimitedProvider(
+			url,
+			chainId,
+			15,
+			1000,
+		) as RateLimitedJsonRpcProvider;
 	}
 }
 
-providerData.subscribe(({ network, rpcURL: currentRpcURL }) => {
-	//console.log('providerData updated:', network, currentRpcURL);
+providerData.subscribe(({ network }) => {
+	//console.log('providerData updated:', network);
 	if (!network) {
-		status.set({ color: 'red', text: 'No network selected' });
+		status.set({ color: "red", text: "No network selected" });
 		availableRPCURLs.set([]);
 		return;
 	}
-	const validURLs = (network.rpcURLs || []).filter(url => {
+	const validURLs = (network.rpcURLs || []).filter((url) => {
 		if (isWebSocketUrl(url)) return isValidWebSocketUrl(url);
 		return true;
 	});
@@ -112,7 +137,7 @@ providerData.subscribe(({ network, rpcURL: currentRpcURL }) => {
 
 	// Don't override RPC URL if user manually selected one
 	if (isManualRpcSelection) {
-		console.log('Skipping automatic RPC selection due to manual selection');
+		console.log("Skipping automatic RPC selection due to manual selection");
 		isManualRpcSelection = false;
 		return;
 	}
@@ -129,14 +154,16 @@ providerData.subscribe(({ network, rpcURL: currentRpcURL }) => {
 	//console.log('Selected RPC URL for network:', selectedUrl);
 	if (validURLs.length > 0) {
 		const urlToUse = selectedUrl || validURLs[0];
-		console.log('Setting RPC URL to:', urlToUse);
+		if (!urlToUse) return;
+		console.log("Setting RPC URL to:", urlToUse);
 		rpcURL.set(urlToUse);
-		if (selectedUrl && network.guid) setSelectedRpcUrl(network.guid, selectedUrl);
+		if (selectedUrl && network.guid)
+			setSelectedRpcUrl(network.guid, selectedUrl);
 		connectToURL();
 		return;
 	} else {
-		console.log('No valid RPC URLs available for network');
-		status.set({ color: 'red', text: 'No valid RPC URLs available' });
+		console.log("No valid RPC URLs available for network");
+		status.set({ color: "red", text: "No valid RPC URLs available" });
 		return;
 	}
 });
@@ -144,101 +171,114 @@ providerData.subscribe(({ network, rpcURL: currentRpcURL }) => {
 function connectToURL(): void {
 	const currentProvider = get(provider);
 	if (currentProvider) {
-		console.log('Destroying existing provider');
+		console.log("Destroying existing provider");
 		currentProvider.destroy();
 	}
 	provider.set(null);
 	const net = get(selectedNetwork);
 	const currentRpcURL = get(rpcURL);
 	if (!net) {
-		console.error('No selected network');
-		status.set({ color: 'red', text: 'No network selected' });
+		console.error("No selected network");
+		status.set({ color: "red", text: "No network selected" });
 		return;
 	}
 	if (!currentRpcURL) {
-		console.error('No RPC URL set');
-		status.set({ color: 'red', text: 'No RPC URL set' });
+		console.error("No RPC URL set");
+		status.set({ color: "red", text: "No RPC URL set" });
 		return;
 	}
-	status.set({ color: 'orange', text: 'Connecting...' });
+	status.set({ color: "orange", text: "Connecting..." });
 	try {
 		const isWebSocket = isWebSocketUrl(currentRpcURL);
-		const connectionType = isWebSocket ? 'WebSocket' : 'HTTP';
+		const connectionType = isWebSocket ? "WebSocket" : "HTTP";
 		//console.log(`Connecting to ${connectionType} RPC:`, currentRpcURL);
-		status.set({ color: 'orange', text: `Connecting via ${connectionType}...` });
+		status.set({
+			color: "orange",
+			text: `Connecting via ${connectionType}...`,
+		});
 		const p = createProvider(currentRpcURL, net.chainID);
 		provider.set(p);
-		if (isWebSocket && p instanceof WebSocketProvider) console.log('WebSocket provider created');
-		p.on('error', (error: Error) => {
-			console.error('Provider error:', error);
+		if (isWebSocket && p instanceof WebSocketProvider)
+			console.log("WebSocket provider created");
+		p.on("error", (error: Error) => {
+			console.error("Provider error:", error);
 			if (get(provider) === p) {
 				p.destroy();
 				provider.set(null);
-				status.set({ color: 'red', text: 'Connection failed: ' + error.message });
+				status.set({
+					color: "red",
+					text: "Connection failed: " + error.message,
+				});
 			}
 		});
-		p.on('network', (newNetwork: any) => {
+		p.on("network", (newNetwork: any) => {
 			if (get(provider) === p) {
-				console.log('Network changed to:', newNetwork);
-				const connType = isWebSocket ? 'WebSocket' : 'HTTP';
-				status.set({ color: 'orange', text: `Connecting... (${connType})` });
-			} else console.log('Ignoring network event from old provider');
+				console.log("Network changed to:", newNetwork);
+				const connType = isWebSocket ? "WebSocket" : "HTTP";
+				status.set({ color: "orange", text: `Connecting... (${connType})` });
+			} else console.log("Ignoring network event from old provider");
 		});
 		p.getNetwork()
-			.then(network => {
+			.then((network) => {
 				if (get(provider) === p) {
-					console.log('Successfully connected to network:', network.name);
-					const connType = isWebSocket ? 'WebSocket' : 'HTTP';
-					status.set({ color: 'green', text: `Connected to ${network.name} (${connType})` });
+					console.log("Successfully connected to network:", network.name);
+					const connType = isWebSocket ? "WebSocket" : "HTTP";
+					status.set({
+						color: "green",
+						text: `Connected to ${network.name} (${connType})`,
+					});
 					// Save the selected RPC URL after successful connection
 					const net = get(selectedNetwork);
 					const currentRpcUrlValue = get(rpcURL);
 					if (net?.guid && currentRpcUrlValue) {
 						setSelectedRpcUrl(net.guid, currentRpcUrlValue);
 					}
-				} else console.log('Ignoring connection success from old provider');
+				} else console.log("Ignoring connection success from old provider");
 			})
-			.catch(error => {
+			.catch((error) => {
 				if (get(provider) === p) {
-					console.log('Failed to connect to network:', error);
-					status.set({ color: 'red', text: 'Connection failed' });
+					console.log("Failed to connect to network:", error);
+					status.set({ color: "red", text: "Connection failed" });
 					p.destroy();
 					provider.set(null);
-				} else console.log('Ignoring connection error from old provider');
+				} else console.log("Ignoring connection error from old provider");
 			});
 	} catch (error) {
-		console.error('Failed to create provider:', error);
-		status.set({ color: 'red', text: 'Failed to create provider' });
+		console.error("Failed to create provider:", error);
+		status.set({ color: "red", text: "Failed to create provider" });
 	}
 }
 
 export function reconnect(): void {
-	console.log('reconnect() called - this may override RPC URL');
+	console.log("reconnect() called - this may override RPC URL");
 	const currentProvider = get(provider);
 	if (currentProvider) {
-		console.log('Destroying existing provider for reconnect');
+		console.log("Destroying existing provider for reconnect");
 		currentProvider.destroy();
 	}
 	provider.set(null);
 	const net = get(selectedNetwork);
 	if (!net) {
-		console.log('No selected network to reconnect');
+		console.log("No selected network to reconnect");
 		return;
-	} else console.log('Reconnecting to', get(selectedNetwork));
-	status.set({ color: 'orange', text: 'Connecting to ' + net.name });
+	} else console.log("Reconnecting to", get(selectedNetwork));
+	status.set({ color: "orange", text: "Connecting to " + net.name });
 	if (reconnectionTimer !== undefined) clearTimeout(reconnectionTimer);
 	const rurl = get(rpcURL);
-	console.log('reconnect: Current RPC URL:', rurl);
-	if (!rurl || net?.rpcURLs?.find(url => url === rurl) === undefined) {
+	console.log("reconnect: Current RPC URL:", rurl);
+	if (!rurl || net?.rpcURLs?.find((url) => url === rurl) === undefined) {
 		if (!net?.rpcURLs?.[0]) {
 			status.set({
-				color: 'red',
-				text: 'No RPC URL found for the selected network',
+				color: "red",
+				text: "No RPC URL found for the selected network",
 			});
 			return;
 		}
 		const selectedUrl = getSelectedRpcUrl(net);
-		console.log('reconnect: Setting RPC URL to:', selectedUrl || net.rpcURLs[0]);
+		console.log(
+			"reconnect: Setting RPC URL to:",
+			selectedUrl || net.rpcURLs[0],
+		);
 		rpcURL.set(selectedUrl || net.rpcURLs[0]);
 	}
 	connectToURL();
@@ -249,24 +289,26 @@ export function selectRPCURL(url: string): void {
 	if (!net) return;
 	// Allow selection of any URL from the RPC servers list, even if not in valid rpcURLs
 	// This allows testing of non-functional servers
-	console.log('selectRPCURL: Setting RPC URL to:', url);
-	console.log('selectRPCURL: Current RPC URL before change:', get(rpcURL));
+	console.log("selectRPCURL: Setting RPC URL to:", url);
+	console.log("selectRPCURL: Current RPC URL before change:", get(rpcURL));
 	isManualRpcSelection = true; // Set flag to prevent automatic override
 	rpcURL.set(url);
 	// Save the selection immediately, regardless of connection success
 	if (net.guid) {
 		setSelectedRpcUrl(net.guid, url);
 	}
-	console.log('selectRPCURL: RPC URL set, now connecting...');
+	console.log("selectRPCURL: RPC URL set, now connecting...");
 	connectToURL(); // Connect immediately
 }
 
-export async function ensureProviderConnected(): Promise<RateLimitedJsonRpcProvider | RateLimitedWebSocketProvider | null> {
+export async function ensureProviderConnected(): Promise<
+	RateLimitedJsonRpcProvider | RateLimitedWebSocketProvider | null
+> {
 	let providerInstance = get(provider);
-	console.log('Initial provider check:', providerInstance);
+	console.log("Initial provider check:", providerInstance);
 
 	if (!providerInstance || Object.keys(providerInstance).length === 0) {
-		console.warn('⚠️ Provider is empty, attempting to reconnect...');
+		console.warn("⚠️ Provider is empty, attempting to reconnect...");
 		reconnect();
 
 		// Wait for successful connection by monitoring status
@@ -274,24 +316,42 @@ export async function ensureProviderConnected(): Promise<RateLimitedJsonRpcProvi
 		const startTime = Date.now();
 
 		while (Date.now() - startTime < maxWaitTime) {
-			await new Promise(resolve => setTimeout(resolve, 500)); // Check every 500ms
+			await new Promise((resolve) => setTimeout(resolve, 500)); // Check every 500ms
 
 			const currentStatus = get(status);
 			providerInstance = get(provider);
 
-			console.log('Reconnect status:', currentStatus.text, 'Provider keys:', Object.keys(providerInstance || {}));
+			console.log(
+				"Reconnect status:",
+				currentStatus.text,
+				"Provider keys:",
+				Object.keys(providerInstance || {}),
+			);
 
 			// Check if we have a valid provider with actual methods
-			if (providerInstance && typeof providerInstance === 'object' && 'getNetwork' in providerInstance && 'getFeeData' in providerInstance && currentStatus.color === 'green') {
-				console.log('✅ Provider successfully reconnected!');
+			if (
+				providerInstance &&
+				typeof providerInstance === "object" &&
+				"getNetwork" in providerInstance &&
+				"getFeeData" in providerInstance &&
+				currentStatus.color === "green"
+			) {
+				console.log("✅ Provider successfully reconnected!");
 				break;
 			}
 		}
 
 		// Final check after wait period
-		if (!providerInstance || typeof providerInstance !== 'object' || !('getNetwork' in providerInstance) || !('getFeeData' in providerInstance)) {
-			console.error('❌ Provider reconnection failed or timed out!');
-			throw new Error('Provider connection error - please check your network connection and try again');
+		if (
+			!providerInstance ||
+			typeof providerInstance !== "object" ||
+			!("getNetwork" in providerInstance) ||
+			!("getFeeData" in providerInstance)
+		) {
+			console.error("❌ Provider reconnection failed or timed out!");
+			throw new Error(
+				"Provider connection error - please check your network connection and try again",
+			);
 		}
 	}
 	return providerInstance;
@@ -300,6 +360,5 @@ export async function ensureProviderConnected(): Promise<RateLimitedJsonRpcProvi
 export function getProviderUrl(network: any): string {
 	if (network.selectedRpcUrl) return network.selectedRpcUrl;
 	if (network.rpcURLs && network.rpcURLs.length > 0) return network.rpcURLs[0];
-	throw new Error('No RPC URL available');
+	throw new Error("No RPC URL available");
 }
-

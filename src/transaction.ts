@@ -1,13 +1,20 @@
-import { get } from 'svelte/store';
-import { writable } from 'svelte/store';
-import { Mnemonic, HDNodeWallet, parseUnits, formatUnits, Contract, type PreparedTransactionRequest, type TransactionReceipt } from 'ethers';
-import { ensureProviderConnected, provider, reconnect, status } from './provider';
-import { selectedNetwork, type INetwork } from './network';
-import { selectedWallet, selectedAddress } from './wallet';
-import { sendTransactionTrezor } from './trezor-transaction';
-import { sendTransactionLedger } from './ledger-transaction';
-import type {TransactionResponse} from "ethers";
-import { addTransactionToLog } from './log.ts';
+import { get } from "svelte/store";
+import { writable } from "svelte/store";
+import {
+	Mnemonic,
+	HDNodeWallet,
+	parseUnits,
+	formatUnits,
+	Contract,
+	type PreparedTransactionRequest,
+} from "ethers";
+import { ensureProviderConnected, provider } from "./provider";
+import { selectedNetwork, type INetwork } from "./network";
+import { selectedWallet, selectedAddress } from "./wallet";
+import { sendTransactionTrezor } from "./trezor-transaction";
+import { sendTransactionLedger } from "./ledger-transaction";
+import type { TransactionResponse } from "ethers";
+import { addTransactionToLog } from "./log.ts";
 
 export interface IPayment {
 	address: string;
@@ -29,27 +36,28 @@ export interface TransactionTimeEstimate {
 	high: string;
 }
 
-
 let estimatedFee: FeeEstimate = {
-	low: '0',
-	average: '0',
-	high: '0',
+	low: "0",
+	average: "0",
+	high: "0",
 };
 export let estimatedTransactionTimes = writable<TransactionTimeEstimate>({
-	low: 'unknown',
-	average: 'unknown',
-	high: 'unknown',
+	low: "unknown",
+	average: "unknown",
+	high: "unknown",
 });
 export const feeLoading = writable(false);
 export const transactionTimeLoading = writable(false);
-export const feeLevel = writable<'low' | 'average' | 'high' | 'custom'>('average');
-export const fee = writable<string | number>('0');
-export const transactionTime = writable<string>('unknown');
+export const feeLevel = writable<"low" | "average" | "high" | "custom">(
+	"average",
+);
+export const fee = writable<string | number>("0");
+export const transactionTime = writable<string>("unknown");
 export const avgBlockTimeStore = writable<any>();
 export const confirmationBlocksStore = writable<any>();
 
-transactionTime.subscribe(value => {
-	console.log('transactionTime updated:', value);
+transactionTime.subscribe((value) => {
+	console.log("transactionTime updated:", value);
 });
 
 export function getEtherAmount(amount: string | number): bigint | null {
@@ -61,7 +69,9 @@ export function getEtherAmount(amount: string | number): bigint | null {
 	}
 }
 
-export async function estimateTransactionFee(contractAddress?: string): Promise<{
+export async function estimateTransactionFee(
+	contractAddress?: string,
+): Promise<{
 	low: string;
 	average: string;
 	high: string;
@@ -69,14 +79,18 @@ export async function estimateTransactionFee(contractAddress?: string): Promise<
 	const providerInstance = get(provider);
 	const selectedAddressValue = get(selectedAddress);
 	if (!providerInstance || !get(selectedNetwork) || !selectedAddressValue) {
-		console.log('estimateTransactionFee: Missing requirements');
+		console.log("estimateTransactionFee: Missing requirements");
 		return null;
 	}
-	console.log('estimateTransactionFee: Starting estimation for', contractAddress ? 'token' : 'ETH', 'transaction');
+	console.log(
+		"estimateTransactionFee: Starting estimation for",
+		contractAddress ? "token" : "ETH",
+		"transaction",
+	);
 	feeLoading.set(true);
 	// Clear fee if not custom level
 	const currentFeeLevel = get(feeLevel);
-	if (currentFeeLevel !== 'custom') fee.set('');
+	if (currentFeeLevel !== "custom") fee.set("");
 	try {
 		const feeData = await providerInstance.getFeeData();
 		let gasLimit: bigint;
@@ -85,16 +99,31 @@ export async function estimateTransactionFee(contractAddress?: string): Promise<
 		if (contractAddress) {
 			// For token transactions, estimate gas limit
 			try {
-				const mn = Mnemonic.fromPhrase(get(selectedWallet)?.phrase || '');
-				const hd_wallet = HDNodeWallet.fromMnemonic(mn, selectedAddressValue.path).connect(providerInstance);
-				const tokenContract = new Contract(contractAddress, ['function transfer(address to, uint256 amount) returns (bool)'], hd_wallet);
+				const mn = Mnemonic.fromPhrase(get(selectedWallet)?.phrase || "");
+				const hd_wallet = HDNodeWallet.fromMnemonic(
+					mn,
+					selectedAddressValue.path,
+				).connect(providerInstance);
+				const tokenContract = new Contract(
+					contractAddress,
+					["function transfer(address to, uint256 amount) returns (bool)"],
+					hd_wallet,
+				);
 				// Use a dummy address and amount for estimation
-				const dummyAddress = '0x0000000000000000000000000000000000000001';
-				const dummyAmount = parseUnits('1', 18);
-				gasLimit = await tokenContract.transfer.estimateGas(dummyAddress, dummyAmount);
-				console.log('estimateTransactionFee: Estimated gas limit for token:', gasLimit.toString());
+				const dummyAddress = "0x0000000000000000000000000000000000000001";
+				const dummyAmount = parseUnits("1", 18);
+				gasLimit = await tokenContract["transfer"]!.estimateGas(
+					dummyAddress,
+					dummyAmount,
+				);
+				console.log(
+					"estimateTransactionFee: Estimated gas limit for token:",
+					gasLimit.toString(),
+				);
 			} catch (error) {
-				console.warn('estimateTransactionFee: Could not estimate token gas, using default 65000');
+				console.warn(
+					"estimateTransactionFee: Could not estimate token gas, using default 65000",
+				);
 				gasLimit = 65000n; // Default for token transfers
 			}
 		} else {
@@ -113,32 +142,42 @@ export async function estimateTransactionFee(contractAddress?: string): Promise<
 		let gasPriceMultiplier = 120n; // Default 120% (reduced from previous high values)
 		// Check recent block congestion to adjust gas price
 		try {
-			const latestBlock = await providerInstance.getBlock('latest');
+			const latestBlock = await providerInstance.getBlock("latest");
 			if (latestBlock && latestBlock.gasUsed && latestBlock.gasLimit) {
-				const gasUtilization = Number((latestBlock.gasUsed * 100n) / latestBlock.gasLimit);
-				console.log('Network gas utilization:', gasUtilization + '%');
+				const gasUtilization = Number(
+					(latestBlock.gasUsed * 100n) / latestBlock.gasLimit,
+				);
+				console.log("Network gas utilization:", gasUtilization + "%");
 				// Adjust multiplier based on network congestion - more conservative values
 				if (gasUtilization > 95) {
 					gasPriceMultiplier = 150n; // 150% for very high congestion
-					console.log('Very high network congestion detected, using 150% gas price');
+					console.log(
+						"Very high network congestion detected, using 150% gas price",
+					);
 				} else if (gasUtilization > 85) {
 					gasPriceMultiplier = 140n; // 140% for high congestion
-					console.log('High network congestion detected, using 140% gas price');
+					console.log("High network congestion detected, using 140% gas price");
 				} else if (gasUtilization > 70) {
 					gasPriceMultiplier = 130n; // 130% for medium congestion
-					console.log('Medium network congestion detected, using 130% gas price');
+					console.log(
+						"Medium network congestion detected, using 130% gas price",
+					);
 				} else {
-					console.log('Normal network congestion, using 120% gas price');
+					console.log("Normal network congestion, using 120% gas price");
 				}
 			}
 		} catch (blockError) {
-			console.warn('Could not check network congestion, using default gas price:', blockError);
+			console.warn(
+				"Could not check network congestion, using default gas price:",
+				blockError,
+			);
 		}
 		if (maxFeePerGas && feeData.maxPriorityFeePerGas) {
 			const baseFee = maxFeePerGas - feeData.maxPriorityFeePerGas;
 			const lowPriorityFee = (feeData.maxPriorityFeePerGas * 75n) / 100n; // Increased from 50%
 			lowFee = (baseFee + lowPriorityFee) * effectiveGasLimit;
-			averageFee = ((maxFeePerGas * gasPriceMultiplier) / 100n) * effectiveGasLimit; // Increased
+			averageFee =
+				((maxFeePerGas * gasPriceMultiplier) / 100n) * effectiveGasLimit; // Increased
 			const highPriorityFee = (feeData.maxPriorityFeePerGas * 200n) / 100n; // Increased from 150%
 			highFee = (baseFee + highPriorityFee) * effectiveGasLimit;
 		} else if (gasPrice) {
@@ -152,21 +191,24 @@ export async function estimateTransactionFee(contractAddress?: string): Promise<
 			high: formatUnits(highFee, 18),
 		};
 		estimatedFee = fees;
-		console.log('estimatedFee set to:', estimatedFee);
+		console.log("estimatedFee set to:", estimatedFee);
 		// Update transaction time based on real data (asynchronously)
 		transactionTimeLoading.set(true);
 		updateTransactionTimes()
-			.catch(error => {
-				console.error('Error updating transaction times (non-blocking):', error);
+			.catch((error) => {
+				console.error(
+					"Error updating transaction times (non-blocking):",
+					error,
+				);
 			})
 			.finally(() => {
 				transactionTimeLoading.set(false);
 			});
 		updateFeeFromLevel();
-		console.log('estimateTransactionFee: Completed, returning:', fees);
+		console.log("estimateTransactionFee: Completed, returning:", fees);
 		return fees;
 	} catch (e) {
-		console.error('Error estimating transaction fee:', e);
+		console.error("Error estimating transaction fee:", e);
 		return null;
 	} finally {
 		feeLoading.set(false);
@@ -175,17 +217,27 @@ export async function estimateTransactionFee(contractAddress?: string): Promise<
 
 export function updateFeeFromLevel() {
 	const currentFeeLevel = get(feeLevel);
-	console.log('updateFeeFromLevel called with:', currentFeeLevel, 'estimatedFee:', estimatedFee);
-	if (currentFeeLevel !== 'custom') {
+	console.log(
+		"updateFeeFromLevel called with:",
+		currentFeeLevel,
+		"estimatedFee:",
+		estimatedFee,
+	);
+	if (currentFeeLevel !== "custom") {
 		fee.set(estimatedFee[currentFeeLevel]);
-		console.log('Updated fee to:', get(fee));
+		console.log("Updated fee to:", get(fee));
 	}
-	console.log('updateFeeFromLevel: Update estimated transaction time to:', get(transactionTime));
+	console.log(
+		"updateFeeFromLevel: Update estimated transaction time to:",
+		get(transactionTime),
+	);
 	transactionTime.set(getEstimatedTransactionTime(currentFeeLevel));
 }
 
-export function getEstimatedTransactionTime(feeLevel: 'low' | 'average' | 'high' | 'custom'): string {
-	if (feeLevel === 'custom') {
+export function getEstimatedTransactionTime(
+	feeLevel: "low" | "average" | "high" | "custom",
+): string {
+	if (feeLevel === "custom") {
 		// Calculate custom time based on fee amount
 		const customFee = parseFloat(get(fee).toString());
 		const lowFee = parseFloat(estimatedFee.low);
@@ -193,17 +245,34 @@ export function getEstimatedTransactionTime(feeLevel: 'low' | 'average' | 'high'
 		const highFee = parseFloat(estimatedFee.high);
 		const currentEstimatedTimes = get(estimatedTransactionTimes);
 		// If we don't have valid fee data or times, return unknown
-		if (!customFee || !lowFee || !averageFee || !highFee || currentEstimatedTimes.low === 'unknown' || currentEstimatedTimes.average === 'unknown' || currentEstimatedTimes.high === 'unknown') return 'unknown';
+		if (
+			!customFee ||
+			!lowFee ||
+			!averageFee ||
+			!highFee ||
+			currentEstimatedTimes.low === "unknown" ||
+			currentEstimatedTimes.average === "unknown" ||
+			currentEstimatedTimes.high === "unknown"
+		)
+			return "unknown";
 		// Determine which range the custom fee falls into
 		if (customFee >= highFee) return currentEstimatedTimes.high;
 		else if (customFee >= averageFee) {
 			// Interpolate between average and high
 			const ratio = (customFee - averageFee) / (highFee - averageFee);
-			return interpolateTransactionTime(currentEstimatedTimes.average, currentEstimatedTimes.high, ratio);
+			return interpolateTransactionTime(
+				currentEstimatedTimes.average,
+				currentEstimatedTimes.high,
+				ratio,
+			);
 		} else if (customFee >= lowFee) {
 			// Interpolate between low and average
 			const ratio = (customFee - lowFee) / (averageFee - lowFee);
-			return interpolateTransactionTime(currentEstimatedTimes.low, currentEstimatedTimes.average, ratio);
+			return interpolateTransactionTime(
+				currentEstimatedTimes.low,
+				currentEstimatedTimes.average,
+				ratio,
+			);
 		} else {
 			// Custom fee is lower than low fee, estimate longer time
 			return currentEstimatedTimes.low;
@@ -220,7 +289,7 @@ async function updateTransactionTimes(): Promise<void> {
 	try {
 		// Timeout for the entire operation
 		const timeoutPromise = new Promise<never>((_, reject) => {
-			setTimeout(() => reject(new Error('Timeout')), 25000); // 5 second timeout
+			setTimeout(() => reject(new Error("Timeout")), 25000); // 5 second timeout
 		});
 		const analysisPromise = (async () => {
 			// Get last 5 blocks for faster analysis
@@ -231,12 +300,20 @@ async function updateTransactionTimes(): Promise<void> {
 			const [feeHistoryResult, ...blockResults] = await Promise.all([
 				(async () => {
 					try {
-						console.debug('Fetching eth_feeHistory for last', blockCount, 'blocks');
-						const r = await providerInstance.send('eth_feeHistory', [`0x${blockCount.toString(16)}`, 'latest', [10, 50, 90]]);
-						console.debug('eth_feeHistory result:', r);
+						console.debug(
+							"Fetching eth_feeHistory for last",
+							blockCount,
+							"blocks",
+						);
+						const r = await providerInstance.send("eth_feeHistory", [
+							`0x${blockCount.toString(16)}`,
+							"latest",
+							[10, 50, 90],
+						]);
+						console.debug("eth_feeHistory result:", r);
 						return r;
 					} catch (error) {
-						console.debug('Error fetching eth_feeHistory:', error);
+						console.debug("Error fetching eth_feeHistory:", error);
 						return null;
 					}
 				})(),
@@ -245,26 +322,30 @@ async function updateTransactionTimes(): Promise<void> {
 					console.debug(`Fetching block ${latest - i}`);
 					return providerInstance
 						.getBlock(latest - i)
-						.then(block => {
+						.then((block) => {
 							console.debug(`Block ${latest - i} fetched:`, block);
 							return block;
 						})
-						.catch(error => {
+						.catch((error) => {
 							console.debug(`Error fetching block ${latest - i}:`, error);
 							return null; // Return null for failed blocks
 						});
 				}),
 			]);
-			console.debug('...');
-			console.debug('Fee history result:', feeHistoryResult);
-			console.debug('Block results:', blockResults);
+			console.debug("...");
+			console.debug("Fee history result:", feeHistoryResult);
+			console.debug("Block results:", blockResults);
 			// Block time analysis - require at least 3 valid blocks for accuracy
 			const blockTimes: number[] = [];
-			const validBlocks = blockResults.filter(block => block && block.timestamp);
-			console.debug('Valid blocks:', validBlocks.length, validBlocks);
+			const validBlocks = blockResults.filter(
+				(block) => block && block.timestamp,
+			);
+			console.debug("Valid blocks:", validBlocks.length, validBlocks);
 			// Not enough blocks for accurate calculation
 			if (validBlocks.length < 3) {
-				console.debug('Not enough valid blocks for accurate transaction time estimation');
+				console.debug(
+					"Not enough valid blocks for accurate transaction time estimation",
+				);
 				return null;
 			}
 			for (let i = 0; i < validBlocks.length - 1; i++) {
@@ -278,24 +359,34 @@ async function updateTransactionTimes(): Promise<void> {
 			}
 			// Require at least 2 valid block times for accurate average
 			if (blockTimes.length < 2) {
-				console.debug('Not enough valid block times for accurate transaction time estimation');
+				console.debug(
+					"Not enough valid block times for accurate transaction time estimation",
+				);
 				return null;
 			}
 			// Calculate precise average block time
-			const avgBlockTime = blockTimes.reduce((a, b) => a + b, 0) / blockTimes.length;
+			const avgBlockTime =
+				blockTimes.reduce((a, b) => a + b, 0) / blockTimes.length;
 			avgBlockTimeStore.set(avgBlockTime);
-			console.debug('Average block time calculated:', avgBlockTime, 'seconds');
+			console.debug("Average block time calculated:", avgBlockTime, "seconds");
 			// Confirmation estimate based on real data
-			const confirmationBlocks = estimateConfirmationBlocks(feeHistoryResult, avgBlockTime);
+			const confirmationBlocks = estimateConfirmationBlocks(
+				feeHistoryResult,
+				avgBlockTime,
+			);
 			confirmationBlocksStore.set(confirmationBlocks);
 			// Only return if we have valid confirmation blocks
 			if (!confirmationBlocks) {
-				console.debug('No valid confirmation blocks estimated from fee history');
+				console.debug(
+					"No valid confirmation blocks estimated from fee history",
+				);
 				return null;
 			}
 			return {
 				low: formatTransactionTime(confirmationBlocks.low * avgBlockTime),
-				average: formatTransactionTime(confirmationBlocks.average * avgBlockTime),
+				average: formatTransactionTime(
+					confirmationBlocks.average * avgBlockTime,
+				),
 				high: formatTransactionTime(confirmationBlocks.high * avgBlockTime),
 			};
 		})();
@@ -306,41 +397,61 @@ async function updateTransactionTimes(): Promise<void> {
 			estimatedTransactionTimes.set(result);
 			// Update the transaction time store after getting new data
 			const currentFeeLevel = get(feeLevel);
-			if (currentFeeLevel !== 'custom') {
-				console.debug('updateTransactionTimes: Updating transaction time for fee level:', currentFeeLevel, 'to:', result[currentFeeLevel]);
+			if (currentFeeLevel !== "custom") {
+				console.debug(
+					"updateTransactionTimes: Updating transaction time for fee level:",
+					currentFeeLevel,
+					"to:",
+					result[currentFeeLevel],
+				);
 				transactionTime.set(result[currentFeeLevel]);
 			}
 		}
 		// If result is null, keep existing "unknown" values
 	} catch (error) {
-		console.error('Error updating transaction times:', error);
+		console.error("Error updating transaction times:", error);
 		// Keep existing "unknown" values, don't override with inaccurate data
 	}
 }
 
 function estimateConfirmationBlocks(
 	feeHistory: any,
-	avgBlockTime: number
+	avgBlockTime: number,
 ): {
 	low: number;
 	average: number;
 	high: number;
 } | null {
 	// Return null if no fee history data - we need this for accurate estimation
-	if (!feeHistory || !feeHistory.reward || !Array.isArray(feeHistory.reward) || feeHistory.reward.length === 0) return null;
+	if (
+		!feeHistory ||
+		!feeHistory.reward ||
+		!Array.isArray(feeHistory.reward) ||
+		feeHistory.reward.length === 0
+	)
+		return null;
 	try {
 		// Fee percentile analysis from fee history
 		const rewards = feeHistory.reward;
-		const validRewards = rewards.filter((reward: any) => reward && Array.isArray(reward) && reward.length >= 3);
+		const validRewards = rewards.filter(
+			(reward: any) => reward && Array.isArray(reward) && reward.length >= 3,
+		);
 		// Need at least 3 valid rewards for accurate estimation
 		if (validRewards.length < 3) return null;
 		// Calculate average percentiles
 		const avgPercentiles = validRewards
 			.reduce(
-				(acc: number[], reward: any) => {
-					return [acc[0] + (parseInt(reward[0] || '0', 16) || 0), acc[1] + (parseInt(reward[1] || '0', 16) || 0), acc[2] + (parseInt(reward[2] || '0', 16) || 0)];
+				(
+					acc: [number, number, number],
+					reward: any,
+				): [number, number, number] => {
+					return [
+						acc[0] + (parseInt(reward[0] || "0", 16) || 0),
+						acc[1] + (parseInt(reward[1] || "0", 16) || 0),
+						acc[2] + (parseInt(reward[2] || "0", 16) || 0),
+					];
 				},
-				[0, 0, 0]
+				[0, 0, 0] as [number, number, number],
 			)
 			.map((sum: number) => sum / validRewards.length);
 		// Estimate based on real data
@@ -374,7 +485,7 @@ function estimateConfirmationBlocks(
 				high: baseConfirmations * 2,
 			};
 	} catch (error) {
-		console.error('Error in estimateConfirmationBlocks:', error);
+		console.error("Error in estimateConfirmationBlocks:", error);
 		return null; // Return null on error instead of fallback
 	}
 }
@@ -401,61 +512,148 @@ export async function sendTransaction(
 	const network = get(selectedNetwork);
 	const selectedWalletValue = get(selectedWallet);
 	const selectedAddressValue = get(selectedAddress);
-	console.log('sendTransaction debug - selectedWalletValue:', selectedWalletValue);
-	console.log('sendTransaction debug - selectedAddressValue:', selectedAddressValue);
-	console.log('sendTransaction debug - wallet type:', selectedWalletValue?.type);
-	console.log('sendTransaction debug - wallet has phrase:', !!selectedWalletValue?.phrase);
+	console.log(
+		"sendTransaction debug - selectedWalletValue:",
+		selectedWalletValue,
+	);
+	console.log(
+		"sendTransaction debug - selectedAddressValue:",
+		selectedAddressValue,
+	);
+	console.log(
+		"sendTransaction debug - wallet type:",
+		selectedWalletValue?.type,
+	);
+	console.log(
+		"sendTransaction debug - wallet has phrase:",
+		!!selectedWalletValue?.phrase,
+	);
 	if (!selectedWalletValue || !selectedAddressValue) {
-		console.error('No selected wallet or address');
+		console.error("No selected wallet or address");
 		return null;
 	}
 
 	//console.log('selectedWalletValue.type:', selectedWalletValue.type);
 	let hash: string | null = null;
-	if (selectedWalletValue.type === 'software') {
-		hash = (await sendTransactionSw(selectedWalletValue, selectedAddressValue, address, etherValue, etherValueFee, contractAddress)).hash;
-	} else if (selectedWalletValue.type === 'trezor') {
-		hash = (await sendTransactionTrezor(selectedWalletValue, selectedAddressValue, address, etherValue, etherValueFee, contractAddress)).hash;
-	} else if (selectedWalletValue.type === 'ledger') {
-		hash = (await sendTransactionLedger(selectedWalletValue, selectedAddressValue, address, etherValue, etherValueFee, contractAddress)).hash;
+	if (selectedWalletValue.type === "software") {
+		hash = (
+			await sendTransactionSw(
+				selectedWalletValue,
+				selectedAddressValue,
+				address,
+				etherValue,
+				etherValueFee,
+				contractAddress,
+			)
+		).hash;
+	} else if (selectedWalletValue.type === "trezor") {
+		hash = (
+			await sendTransactionTrezor(
+				selectedWalletValue,
+				selectedAddressValue,
+				address,
+				etherValue,
+				etherValueFee,
+				contractAddress,
+			)
+		).hash;
+	} else if (selectedWalletValue.type === "ledger") {
+		hash = (
+			await sendTransactionLedger(
+				selectedWalletValue,
+				selectedAddressValue,
+				address,
+				etherValue,
+				etherValueFee,
+				contractAddress,
+			)
+		).hash;
 	} else {
-		console.error('Unknown wallet type:', selectedWalletValue.type);
-		throw new Error('Invalid wallet configuration');
+		console.error("Unknown wallet type:", selectedWalletValue.type);
+		throw new Error("Invalid wallet configuration");
 	}
 
-	logTransaction(network, address, etherValue, contractAddress, hash, selectedCurrencySymbol, decimals);
+	logTransaction(
+		network,
+		address,
+		etherValue,
+		contractAddress,
+		hash,
+		selectedCurrencySymbol,
+		decimals,
+	);
 	return hash;
 }
 
-
-export function logTransaction(network: INetwork | undefined, address: string, amount: bigint, contractAddress?: string, hash?: string, selectedCurrencySymbol?: string, decimals?: number): void {
+export function logTransaction(
+	network: INetwork | undefined,
+	address: string,
+	amount: bigint,
+	contractAddress?: string,
+	hash?: string,
+	selectedCurrencySymbol?: string,
+	decimals?: number,
+): void {
 	if (!network) {
-		console.warn('Cannot log transaction: no network provided');
+		console.warn("Cannot log transaction: no network provided");
 		return;
 	}
-	const decimals2 = contractAddress ? ((decimals === null || decimals === undefined) ? 18 : decimals) : 18;
-	const symbol = contractAddress ? (selectedCurrencySymbol||'') : get(selectedNetwork)?.currency?.symbol || '';
-	addTransactionToLog(network, address, amount, symbol, decimals2, contractAddress ?? undefined, hash ?? undefined);
+	const decimals2 = contractAddress
+		? decimals === null || decimals === undefined
+			? 18
+			: decimals
+		: 18;
+	const symbol = contractAddress
+		? selectedCurrencySymbol || ""
+		: get(selectedNetwork)?.currency?.symbol || "";
+	addTransactionToLog(
+		network,
+		address,
+		amount,
+		symbol,
+		decimals2,
+		contractAddress ?? undefined,
+		hash ?? undefined,
+	);
 }
 
-async function sendTransactionSw(selectedWalletValue: any, selectedAddressValue: any, address: string, etherValue: bigint, etherValueFee: bigint, contractAddress?: string): Promise<TransactionResponse> {
+async function sendTransactionSw(
+	selectedWalletValue: any,
+	selectedAddressValue: any,
+	address: string,
+	etherValue: bigint,
+	_etherValueFee: bigint,
+	contractAddress?: string,
+): Promise<TransactionResponse> {
 	// Check provider connection and attempt to reconnect if needed
 	let providerInstance = await ensureProviderConnected();
 	if (!providerInstance) {
-		throw new Error('Failed to connect to provider');
+		throw new Error("Failed to connect to provider");
 	}
 
 	if (!selectedWalletValue.phrase) {
-		throw new Error('Software wallet configuration error: missing mnemonic phrase');
+		throw new Error(
+			"Software wallet configuration error: missing mnemonic phrase",
+		);
 	}
 
 	const mn = Mnemonic.fromPhrase(selectedWalletValue.phrase);
-	let hd_wallet = HDNodeWallet.fromMnemonic(mn, selectedAddressValue.path).connect(providerInstance);
+	let hd_wallet = HDNodeWallet.fromMnemonic(
+		mn,
+		selectedAddressValue.path,
+	).connect(providerInstance);
 	let request: PreparedTransactionRequest;
 	if (contractAddress) {
 		// Token transaction - call transfer method on the token contract
-		const tokenContract = new Contract(contractAddress, ['function transfer(address to, uint256 amount) returns (bool)'], hd_wallet);
-		const transferData = tokenContract.interface.encodeFunctionData('transfer', [address, etherValue]);
+		const tokenContract = new Contract(
+			contractAddress,
+			["function transfer(address to, uint256 amount) returns (bool)"],
+			hd_wallet,
+		);
+		const transferData = tokenContract.interface.encodeFunctionData(
+			"transfer",
+			[address, etherValue],
+		);
 		request = {
 			to: contractAddress,
 			from: selectedAddressValue.address,
@@ -472,47 +670,82 @@ async function sendTransactionSw(selectedWalletValue: any, selectedAddressValue:
 	}
 	//
 	//nonce: await provider.getTransactionCount(selectedAddressValue.address),
-	console.log('selectedAddressValue.address:', selectedAddressValue);
-	console.log('provider:', providerInstance);
+	console.log("selectedAddressValue.address:", selectedAddressValue);
+	console.log("provider:", providerInstance);
 	// Get and set proper nonce to avoid conflicts
 	// Use 'latest' instead of 'pending' to get confirmed nonce, then check for pending transactions
-	const confirmedNonce = await providerInstance.getTransactionCount(selectedAddressValue.address, 'latest');
-	const pendingNonce = await providerInstance.getTransactionCount(selectedAddressValue.address, 'pending');
+	const confirmedNonce = await providerInstance.getTransactionCount(
+		selectedAddressValue.address,
+		"latest",
+	);
+	const pendingNonce = await providerInstance.getTransactionCount(
+		selectedAddressValue.address,
+		"pending",
+	);
 
-	console.log('📊 Confirmed nonce for address:', confirmedNonce);
-	console.log('📊 Pending nonce for address:', pendingNonce);
+	console.log("📊 Confirmed nonce for address:", confirmedNonce);
+	console.log("📊 Pending nonce for address:", pendingNonce);
 
 	// If there are pending transactions, we need to wait or use a higher nonce
 	if (pendingNonce > confirmedNonce) {
-		console.warn('⚠️ There are pending transactions! Confirmed:', confirmedNonce, 'Pending:', pendingNonce);
-		console.warn('⚠️ This might cause nonce conflicts. Consider waiting for pending transactions to complete.');
+		console.warn(
+			"⚠️ There are pending transactions! Confirmed:",
+			confirmedNonce,
+			"Pending:",
+			pendingNonce,
+		);
+		console.warn(
+			"⚠️ This might cause nonce conflicts. Consider waiting for pending transactions to complete.",
+		);
 
 		// Check if we should warn user about potential stuck transactions
 		const pendingCount = pendingNonce - confirmedNonce;
 		if (pendingCount > 3) {
-			console.error('🚨 Warning: ' + pendingCount + ' pending transactions detected!');
-			console.error('🚨 Your previous transactions might be stuck. Consider increasing gas price or waiting.');
+			console.error(
+				"🚨 Warning: " + pendingCount + " pending transactions detected!",
+			);
+			console.error(
+				"🚨 Your previous transactions might be stuck. Consider increasing gas price or waiting.",
+			);
 
 			// Ask user if they want to use emergency mode (REPLACE stuck transaction)
-			const useEmergencyMode = confirm(`🚨 STUCK TRANSACTIONS DETECTED! 🚨\n\n` + `You have ${pendingCount} pending transactions (nonce ${confirmedNonce}-${pendingNonce - 1}) blocking new transactions.\n\n` + `EMERGENCY MODE: Replace the FIRST stuck transaction (nonce ${confirmedNonce}) with this transaction using 3x gas price?\n\n` + `⚠️ This will REPLACE the stuck transaction and unblock the queue.\n` + `⚠️ This will cost more but should process faster.\n\n` + `Click OK for Emergency Replacement (3x gas price)\n` + `Click Cancel to abort transaction`);
+			const useEmergencyMode = confirm(
+				`🚨 STUCK TRANSACTIONS DETECTED! 🚨\n\n` +
+					`You have ${pendingCount} pending transactions (nonce ${confirmedNonce}-${pendingNonce - 1}) blocking new transactions.\n\n` +
+					`EMERGENCY MODE: Replace the FIRST stuck transaction (nonce ${confirmedNonce}) with this transaction using 3x gas price?\n\n` +
+					`⚠️ This will REPLACE the stuck transaction and unblock the queue.\n` +
+					`⚠️ This will cost more but should process faster.\n\n` +
+					`Click OK for Emergency Replacement (3x gas price)\n` +
+					`Click Cancel to abort transaction`,
+			);
 
 			if (!useEmergencyMode) {
-				throw new Error(`Transaction cancelled. You have ${pendingCount} stuck transactions blocking new ones.\n\nSolutions:\n1. Wait for pending transactions to complete\n2. Use Emergency Replacement Mode (3x gas price)\n3. Use a different wallet address`);
+				throw new Error(
+					`Transaction cancelled. You have ${pendingCount} stuck transactions blocking new ones.\n\nSolutions:\n1. Wait for pending transactions to complete\n2. Use Emergency Replacement Mode (3x gas price)\n3. Use a different wallet address`,
+				);
 			}
 
 			// Emergency mode: Use the FIRST stuck nonce with higher gas price
-			console.log('🚨 EMERGENCY REPLACEMENT MODE ACTIVATED - Replacing stuck transaction with 3x gas price');
+			console.log(
+				"🚨 EMERGENCY REPLACEMENT MODE ACTIVATED - Replacing stuck transaction with 3x gas price",
+			);
 			request.nonce = confirmedNonce; // Use the FIRST stuck nonce to unblock queue
 
 			// Increase gas price for faster processing
 			if (request.maxFeePerGas) {
 				request.maxFeePerGas = request.maxFeePerGas * 3n;
-				request.maxPriorityFeePerGas = request.maxPriorityFeePerGas ? request.maxPriorityFeePerGas * 3n : request.maxFeePerGas / 2n;
+				request.maxPriorityFeePerGas = request.maxPriorityFeePerGas
+					? request.maxPriorityFeePerGas * 3n
+					: request.maxFeePerGas / 2n;
 			} else if (request.gasPrice) {
 				request.gasPrice = request.gasPrice * 3n;
 			}
 
-			console.log('🚨 REPLACING stuck nonce:', confirmedNonce, 'with 3x gas price');
+			console.log(
+				"🚨 REPLACING stuck nonce:",
+				confirmedNonce,
+				"with 3x gas price",
+			);
 		} else {
 			// Use the pending nonce to queue after existing pending transactions
 			request.nonce = pendingNonce;
@@ -522,32 +755,36 @@ async function sendTransactionSw(selectedWalletValue: any, selectedAddressValue:
 		request.nonce = confirmedNonce;
 	}
 
-	console.log('📊 Using nonce:', request.nonce);
-	console.log('mn:', mn);
-	console.log('hd_wallet:', hd_wallet);
-	console.log('tx request with nonce:', request);
-	console.log('hd_wallet.estimateGas:');
+	console.log("📊 Using nonce:", request.nonce);
+	console.log("mn:", mn);
+	console.log("hd_wallet:", hd_wallet);
+	console.log("tx request with nonce:", request);
+	console.log("hd_wallet.estimateGas:");
 	let eg = await hd_wallet.estimateGas(request);
-	console.log('estimateGas:', eg);
-	console.log('hd_wallet.sendTransaction:');
+	console.log("estimateGas:", eg);
+	console.log("hd_wallet.sendTransaction:");
 	let tx = await hd_wallet.sendTransaction(request);
-	console.log('Transaction sent, hash:', tx.hash);
+	console.log("Transaction sent, hash:", tx.hash);
 	return tx;
 }
 
-function interpolateTransactionTime(timeA: string, timeB: string, ratio: number): string {
+function interpolateTransactionTime(
+	timeA: string,
+	timeB: string,
+	ratio: number,
+): string {
 	// Parse time strings (e.g., "~30s", "~2 min", "~1 h")
 	const parseTime = (timeStr: string): number => {
 		const match = timeStr.match(/~(\d+)\s*(s|min|h)/);
 		if (!match) return 0;
-		const value = parseInt(match[1]);
-		const unit = match[2];
+		const value = parseInt(match[1] ?? "0");
+		const unit = match[2] ?? "s";
 		switch (unit) {
-			case 's':
+			case "s":
 				return value;
-			case 'min':
+			case "min":
 				return value * 60;
-			case 'h':
+			case "h":
 				return value * 3600;
 			default:
 				return value;

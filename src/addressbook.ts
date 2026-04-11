@@ -1,9 +1,7 @@
-import { get } from 'svelte/store';
-import { isAddress } from 'ethers';
-import { localStorageSharedStore } from './utils/svelte-shared-store';
-import { getGuid } from './utils/utils';
-
-
+import { get } from "svelte/store";
+import { isAddress } from "ethers";
+import { localStorageSharedStore } from "./utils/svelte-shared-store";
+import { getGuid } from "./utils/utils";
 
 export interface IAddressBookItem {
 	guid: string;
@@ -22,9 +20,10 @@ export interface IAddressBookImportResult {
 	addedCount?: number;
 }
 
-
-
-export const addressBook = localStorageSharedStore<IAddressBookItem[]>('addressbook', []);
+export const addressBook = localStorageSharedStore<IAddressBookItem[]>(
+	"addressbook",
+	[],
+);
 
 addressBook.subscribe((value: IAddressBookItem[]) => {
 	let modified = false;
@@ -34,75 +33,129 @@ addressBook.subscribe((value: IAddressBookItem[]) => {
 			modified = true;
 		}
 	}
-	if (modified) addressBook.update(v => v);
+	if (modified) addressBook.update((v) => v);
 });
 
-export function findAddressBookItemByAddress(address: string): IAddressBookItem | undefined {
+export function findAddressBookItemByAddress(
+	address: string,
+): IAddressBookItem | undefined {
 	const ab = get(addressBook);
-	return ab.find(i => i.address === address);
+	return ab.find((i) => i.address === address);
 }
 
-export function findAddressBookItemByID(guid: string): IAddressBookItem | undefined {
+export function findAddressBookItemByID(
+	guid: string,
+): IAddressBookItem | undefined {
 	const ab = get(addressBook);
-	return ab.find(i => i.guid === guid);
+	return ab.find((i) => i.guid === guid);
 }
 
-export function validateAddressBookItem(name: string | undefined, address: string | undefined, excludeItemGuid?: string): IAddressBookValidationResult {
-	const trimmedName = name?.trim();
+export function validateAddressBookItem(
+	_name: string | undefined,
+	address: string | undefined,
+	excludeItemGuid?: string,
+): IAddressBookValidationResult {
 	const trimmedAddress = address?.trim();
-	if (!trimmedAddress || trimmedAddress === '') return { isValid: false, error: 'Address is not set' };
-	if (!isAddress(trimmedAddress)) return { isValid: false, error: 'Invalid Ethereum address format' };
+	if (!trimmedAddress || trimmedAddress === "")
+		return { isValid: false, error: "Address is not set" };
+	if (!isAddress(trimmedAddress))
+		return { isValid: false, error: "Invalid Ethereum address format" };
 	const dupe = findAddressBookItemByAddress(trimmedAddress);
-	if (dupe && (!excludeItemGuid || dupe.guid !== excludeItemGuid)) return { isValid: false, error: 'Address already exists in the address book, see name: "' + (dupe.name || 'Unknown') + '"' };
+	if (dupe && (!excludeItemGuid || dupe.guid !== excludeItemGuid))
+		return {
+			isValid: false,
+			error:
+				'Address already exists in the address book, see name: "' +
+				(dupe.name || "Unknown") +
+				'"',
+		};
 	return { isValid: true };
 }
 
-export function addAddressBookItem(name: string | undefined, address: string | undefined): IAddressBookValidationResult {
+export function addAddressBookItem(
+	name: string | undefined,
+	address: string | undefined,
+): IAddressBookValidationResult {
 	const trimmedName = name?.trim();
 	const trimmedAddress = address?.trim();
 	const validation = validateAddressBookItem(trimmedName, trimmedAddress);
 	if (!validation.isValid) return validation;
-	if (!trimmedAddress) return { isValid: false, error: 'Address is required' };
+	if (!trimmedAddress) return { isValid: false, error: "Address is required" };
 	const newItem: IAddressBookItem = {
 		guid: getGuid(),
-		name: trimmedName || '',
+		name: trimmedName || "",
 		address: trimmedAddress,
 	};
-	addressBook.update(currentItems => [...currentItems, newItem]);
+	addressBook.update((currentItems) => [...currentItems, newItem]);
 	return { isValid: true };
 }
 
-export function editAddressBookItem(itemGuid: string, name: string | undefined, address: string | undefined): IAddressBookValidationResult {
+export function editAddressBookItem(
+	itemGuid: string,
+	name: string | undefined,
+	address: string | undefined,
+): IAddressBookValidationResult {
 	const trimmedName = name?.trim();
 	const trimmedAddress = address?.trim();
-	const validation = validateAddressBookItem(trimmedName, trimmedAddress, itemGuid);
+	const validation = validateAddressBookItem(
+		trimmedName,
+		trimmedAddress,
+		itemGuid,
+	);
 	if (!validation.isValid) return validation;
-	if (!trimmedAddress) return { isValid: false, error: 'Address is required' };
-	addressBook.update(currentItems => currentItems.map(item => (item.guid === itemGuid ? { ...item, name: trimmedName || '', address: trimmedAddress } : item)));
+	if (!trimmedAddress) return { isValid: false, error: "Address is required" };
+	addressBook.update((currentItems) =>
+		currentItems.map((item) =>
+			item.guid === itemGuid
+				? { ...item, name: trimmedName || "", address: trimmedAddress }
+				: item,
+		),
+	);
 	return { isValid: true };
 }
 
 export function deleteAddressBookItem(itemGuid: string): boolean {
 	const currentItems = get(addressBook);
-	const itemExists = currentItems.some(item => item.guid === itemGuid);
+	const itemExists = currentItems.some((item) => item.guid === itemGuid);
 	if (!itemExists) return false;
-	addressBook.update(currentItems => currentItems.filter(item => item.guid !== itemGuid));
+	addressBook.update((currentItems) =>
+		currentItems.filter((item) => item.guid !== itemGuid),
+	);
 	return true;
 }
 
-export function validateAddressBookImport(text: string): { valid: boolean; error?: string } {
+export function validateAddressBookImport(text: string): {
+	valid: boolean;
+	error?: string;
+} {
 	try {
 		const data = JSON.parse(text);
-		if (!Array.isArray(data)) return { valid: false, error: 'Invalid data format. Expected an array of address book items.' };
+		if (!Array.isArray(data))
+			return {
+				valid: false,
+				error: "Invalid data format. Expected an array of address book items.",
+			};
 		for (let i = 0; i < data.length; i++) {
 			const item = data[i];
-			if (!item.name || typeof item.name !== 'string') return { valid: false, error: `Item ${i + 1}: Missing or invalid name` };
-			if (!item.address || typeof item.address !== 'string') return { valid: false, error: `Item ${i + 1}: Missing or invalid address` };
-			if (!item.address.match(/^0x[a-fA-F0-9]{40}$/)) return { valid: false, error: `Item ${i + 1}: Invalid Ethereum address format` };
+			if (!item.name || typeof item.name !== "string")
+				return {
+					valid: false,
+					error: `Item ${i + 1}: Missing or invalid name`,
+				};
+			if (!item.address || typeof item.address !== "string")
+				return {
+					valid: false,
+					error: `Item ${i + 1}: Missing or invalid address`,
+				};
+			if (!item.address.match(/^0x[a-fA-F0-9]{40}$/))
+				return {
+					valid: false,
+					error: `Item ${i + 1}: Invalid Ethereum address format`,
+				};
 		}
 		return { valid: true };
 	} catch (error) {
-		return { valid: false, error: 'Invalid JSON format' };
+		return { valid: false, error: "Invalid JSON format" };
 	}
 }
 
@@ -112,7 +165,10 @@ export function importAddressBookItems(text: string): IAddressBookImportResult {
 		const currentAddressBook = get(addressBook);
 		const newItems: IAddressBookItem[] = [];
 		for (const item of data) {
-			const existingItem = currentAddressBook.find(existing => existing.address.toLowerCase() === item.address.toLowerCase());
+			const existingItem = currentAddressBook.find(
+				(existing) =>
+					existing.address.toLowerCase() === item.address.toLowerCase(),
+			);
 			if (!existingItem) {
 				newItems.push({
 					guid: item.guid || getGuid(),
@@ -121,10 +177,11 @@ export function importAddressBookItems(text: string): IAddressBookImportResult {
 				});
 			}
 		}
-		if (newItems.length > 0) addressBook.update(items => [...items, ...newItems]);
+		if (newItems.length > 0)
+			addressBook.update((items) => [...items, ...newItems]);
 		return { success: true, addedCount: newItems.length };
 	} catch (error) {
-		return { success: false, error: 'Failed to import address book items' };
+		return { success: false, error: "Failed to import address book items" };
 	}
 }
 
@@ -139,7 +196,7 @@ export function replaceAddressBook(text: string): IAddressBookImportResult {
 		addressBook.set(processedData);
 		return { success: true, addedCount: processedData.length };
 	} catch (error) {
-		return { success: false, error: 'Failed to replace address book' };
+		return { success: false, error: "Failed to replace address book" };
 	}
 }
 

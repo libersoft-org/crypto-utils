@@ -1,13 +1,17 @@
-import { get, writable, derived } from 'svelte/store';
-import { localStorageSharedStore } from './utils/svelte-shared-store';
-import { getIndexedAccountPath, HDNodeWallet, Mnemonic, randomBytes } from 'ethers';
-import { doAddHardwareAddressTrezor } from './trezor';
-import { doAddHardwareAddressLedger } from './ledger';
-
+import { get, writable, derived } from "svelte/store";
+import { localStorageSharedStore } from "./utils/svelte-shared-store";
+import {
+	getIndexedAccountPath,
+	HDNodeWallet,
+	Mnemonic,
+	randomBytes,
+} from "ethers";
+import { doAddHardwareAddressTrezor } from "./trezor";
+import { doAddHardwareAddressLedger } from "./ledger";
 
 export interface IWallet {
 	guid: string;
-	type?: 'software' | 'trezor' | 'ledger';
+	type?: "software" | "trezor" | "ledger";
 	name: string;
 	phrase?: string;
 	address?: string;
@@ -23,18 +27,28 @@ export interface IAddress {
 	index: number;
 }
 
-
-export const wallets = localStorageSharedStore<IWallet[]>('wallets', []);
-export const selectedWalletID = localStorageSharedStore<string | null>('selectedWalletID', null);
-export const selectedWallet = derived([wallets, selectedWalletID], ([$wallets, $selectedWalletID]) => {
-	const r = $wallets.find(w => w.guid === $selectedWalletID);
-	return r;
-});
-export const selectedAddress = derived([selectedWallet], ([$selectedWallet]) => {
-	let addresses = $selectedWallet?.addresses || [];
-	let result = addresses.find(a => a.index === $selectedWallet?.selected_address_index);
-	return result;
-});
+export const wallets = localStorageSharedStore<IWallet[]>("wallets", []);
+export const selectedWalletID = localStorageSharedStore<string | null>(
+	"selectedWalletID",
+	null,
+);
+export const selectedWallet = derived(
+	[wallets, selectedWalletID],
+	([$wallets, $selectedWalletID]) => {
+		const r = $wallets.find((w) => w.guid === $selectedWalletID);
+		return r;
+	},
+);
+export const selectedAddress = derived(
+	[selectedWallet],
+	([$selectedWallet]) => {
+		let addresses = $selectedWallet?.addresses || [];
+		let result = addresses.find(
+			(a) => a.index === $selectedWallet?.selected_address_index,
+		);
+		return result;
+	},
+);
 export let sendAddress = writable<string | number | undefined>();
 export let sendCurrency = writable<string | null | undefined>();
 
@@ -46,58 +60,67 @@ export function setSendCurrency(currency: string | null) {
 	if (get(sendCurrency) !== currency) sendCurrency.set(currency);
 }
 
-function sortAddresses(addresses: IAddress[]): IAddress[] {
-	return addresses.sort((a, b) => a.index - b.index);
-}
-
 export function addressesMaxIndex(addresses: IAddress[]): number {
 	return addresses.reduce((max, a) => Math.max(max, a.index), -1);
 }
 
-export async function addAddress(w: IWallet, index?: number | string, name?: string): Promise<void> {
+export async function addAddress(
+	w: IWallet,
+	index?: number | string,
+	name?: string,
+): Promise<void> {
 	let indexNum: number;
 	const addresses = w.addresses || [];
-	if (index === undefined || index === null || index === '') {
+	if (index === undefined || index === null || index === "") {
 		indexNum = addressesMaxIndex(addresses) + 1;
 		await doAddAddress(w, addresses, indexNum, name);
 	} else {
 		indexNum = parseInt(index.toString());
 		if (indexNum < 0 || isNaN(indexNum)) {
-			console.error('Invalid index');
+			console.error("Invalid index");
 			return;
 		}
-		const existing = addresses.find(a => a.index === indexNum);
+		const existing = addresses.find((a) => a.index === indexNum);
 		if (existing) {
-			console.error('Address with index', indexNum, 'already exists');
+			console.error("Address with index", indexNum, "already exists");
 			return;
 		}
 		await doAddAddress(w, addresses, indexNum, name);
 	}
 	w.addresses = addresses;
 	w.selected_address_index = indexNum;
-	wallets.update(ws =>
-		ws.map(item =>
+	wallets.update((ws) =>
+		ws.map((item) =>
 			item.guid === w.guid
 				? {
 						...item,
 						addresses: [...addresses],
 						selected_address_index: indexNum,
 					}
-				: item
-		)
+				: item,
+		),
 	);
 }
 
-export function addressIndexAlreadyExists(wallet: IWallet, index: number): boolean {
-	if (wallet?.addresses) return wallet.addresses.some(address => address.index === index);
+export function addressIndexAlreadyExists(
+	wallet: IWallet,
+	index: number,
+): boolean {
+	if (wallet?.addresses)
+		return wallet.addresses.some((address) => address.index === index);
 	else return false;
 }
 
-async function doAddAddress(w: IWallet, addresses: IAddress[], index: number, name?: string): Promise<void> {
+async function doAddAddress(
+	w: IWallet,
+	addresses: IAddress[],
+	index: number,
+	name?: string,
+): Promise<void> {
 	if (isHardwareWallet(w)) {
-		if (w.type === 'trezor') {
+		if (w.type === "trezor") {
 			await doAddHardwareAddressTrezor(w, addresses, index, name);
-		} else if (w.type === 'ledger') {
+		} else if (w.type === "ledger") {
 			await doAddHardwareAddressLedger(w, addresses, index, name);
 		}
 	} else {
@@ -105,9 +128,14 @@ async function doAddAddress(w: IWallet, addresses: IAddress[], index: number, na
 	}
 }
 
-function doAddSoftwareAddress(w: IWallet, addresses: IAddress[], index: number, name?: string): void {
+function doAddSoftwareAddress(
+	w: IWallet,
+	addresses: IAddress[],
+	index: number,
+	name?: string,
+): void {
 	if (!w.phrase) {
-		console.error('Cannot derive address: wallet.phrase is undefined');
+		console.error("Cannot derive address: wallet.phrase is undefined");
 		return;
 	}
 	let mn = Mnemonic.fromPhrase(w.phrase);
@@ -115,7 +143,7 @@ function doAddSoftwareAddress(w: IWallet, addresses: IAddress[], index: number, 
 	let derived_wallet = HDNodeWallet.fromMnemonic(mn, path);
 	let a: IAddress = {
 		address: derived_wallet.address,
-		name: name || 'Address ' + index,
+		name: name || "Address " + index,
 		path: path,
 		index: index,
 	};
@@ -124,7 +152,7 @@ function doAddSoftwareAddress(w: IWallet, addresses: IAddress[], index: number, 
 
 export function selectAddress(wallet: IWallet, address: IAddress): void {
 	wallet.selected_address_index = address.index;
-	wallets.update(v => v);
+	wallets.update((v) => v);
 	selectedWalletID.set(wallet.guid);
 }
 
@@ -132,32 +160,42 @@ export function generateMnemonic(): Mnemonic {
 	return Mnemonic.fromEntropy(randomBytes(32));
 }
 
-export async function addWallet(mnemonic: Mnemonic, name?: string): Promise<void> {
+export async function addWallet(
+	mnemonic: Mnemonic,
+	name?: string,
+): Promise<void> {
 	let newWallet = HDNodeWallet.fromMnemonic(mnemonic);
 	let wallet: IWallet = {
-		guid: 'swwallet-' + Date.now() + '-' + Math.random().toString(36).substring(2, 15),
-		type: 'software',
+		guid:
+			"swwallet-" +
+			Date.now() +
+			"-" +
+			Math.random().toString(36).substring(2, 15),
+		type: "software",
 		phrase: mnemonic.phrase,
 		address: newWallet.address,
 		selected_address_index: 0,
-		name: '',
+		name: "",
 		addresses: [],
 	};
-	wallets.update(w => {
-		wallet.name = name ? name : 'My wallet ' + (w.length + 1);
+	wallets.update((w) => {
+		wallet.name = name ? name : "My wallet " + (w.length + 1);
 		w.push(wallet);
 		return w;
 	});
-	selectedWalletID.set(get(wallets)[get(wallets).length - 1].guid);
+	const allWallets = get(wallets);
+	const lastWallet = allWallets[allWallets.length - 1];
+	if (lastWallet) selectedWalletID.set(lastWallet.guid);
 	await addAddress(wallet);
 }
 
 export function editWallet(wallet: IWallet, name: string): boolean {
 	let success = false;
-	wallets.update(w => {
-		const index = w.findIndex(item => item === wallet);
-		if (index !== -1) {
-			w[index] = { ...w[index], name };
+	wallets.update((w) => {
+		const index = w.findIndex((item) => item === wallet);
+		const existing = w[index];
+		if (index !== -1 && existing) {
+			w[index] = { ...existing, name };
 			success = true;
 		}
 		return w;
@@ -168,8 +206,8 @@ export function editWallet(wallet: IWallet, name: string): boolean {
 export function deleteWallet(wallet: IWallet): boolean {
 	let success = false;
 	const currentSelectedWalletID = get(selectedWalletID);
-	wallets.update(w => {
-		const index = w.findIndex(item => item.guid === wallet.guid);
+	wallets.update((w) => {
+		const index = w.findIndex((item) => item.guid === wallet.guid);
 		if (index !== -1) {
 			w.splice(index, 1);
 			success = true;
@@ -178,35 +216,45 @@ export function deleteWallet(wallet: IWallet): boolean {
 	});
 	if (success && currentSelectedWalletID === wallet.guid) {
 		const remainingWallets = get(wallets);
-		if (remainingWallets.length > 0) selectedWalletID.set(remainingWallets[0].guid);
+		const firstWallet = remainingWallets[0];
+		if (firstWallet) selectedWalletID.set(firstWallet.guid);
 		else selectedWalletID.set(null);
 	}
 	return success;
 }
 
-export function deleteAddressFromWallet(wallet: IWallet, index: string | number): void {
-	wallets.update(ws =>
-		ws.map(item =>
+export function deleteAddressFromWallet(
+	wallet: IWallet,
+	index: string | number,
+): void {
+	wallets.update((ws) =>
+		ws.map((item) =>
 			item.guid === wallet.guid
 				? {
 						...item,
-						addresses: (item.addresses ?? []).filter(a => a.index !== index),
+						addresses: (item.addresses ?? []).filter((a) => a.index !== index),
 					}
-				: item
-		)
+				: item,
+		),
 	);
 }
 
-export function editAddressName(wallet: IWallet, index: string | number, name: string): void {
-	wallets.update(ws =>
-		ws.map(w =>
+export function editAddressName(
+	wallet: IWallet,
+	index: string | number,
+	name: string,
+): void {
+	wallets.update((ws) =>
+		ws.map((w) =>
 			w.guid === wallet.guid
 				? {
 						...w,
-						addresses: (w.addresses || []).map(a => (a.index === index ? { ...a, name } : a)),
+						addresses: (w.addresses || []).map((a) =>
+							a.index === index ? { ...a, name } : a,
+						),
 					}
-				: w
-		)
+				: w,
+		),
 	);
 }
 
@@ -214,20 +262,36 @@ export function reorderWallets(reorderedWallets: IWallet[]): void {
 	wallets.set(reorderedWallets);
 }
 
-export function reorderAddresses(wallet: IWallet, reorderedAddresses: IAddress[]): void {
-	wallets.update(ws => ws.map(w => (w.guid === wallet.guid ? { ...w, addresses: [...reorderedAddresses] } : w)));
+export function reorderAddresses(
+	wallet: IWallet,
+	reorderedAddresses: IAddress[],
+): void {
+	wallets.update((ws) =>
+		ws.map((w) =>
+			w.guid === wallet.guid ? { ...w, addresses: [...reorderedAddresses] } : w,
+		),
+	);
 }
 
-export async function addHardwareWallet(type: 'trezor' | 'ledger', name: string, identifiers: any): Promise<IWallet> {
-	console.debug('Adding hardware wallet:', type, name, identifiers);
+export async function addHardwareWallet(
+	type: "trezor" | "ledger",
+	name: string,
+	identifiers: any,
+): Promise<IWallet> {
+	console.debug("Adding hardware wallet:", type, name, identifiers);
 	const wallet: IWallet = {
-		guid: 'hwwallet-' + type + Date.now() + '-' + Math.random().toString(36).substring(2, 15),
+		guid:
+			"hwwallet-" +
+			type +
+			Date.now() +
+			"-" +
+			Math.random().toString(36).substring(2, 15),
 		type,
 		name,
 		selected_address_index: 0,
 		identifiers,
 	};
-	wallets.update(w => {
+	wallets.update((w) => {
 		w.push(wallet);
 		return w;
 	});
@@ -236,14 +300,14 @@ export async function addHardwareWallet(type: 'trezor' | 'ledger', name: string,
 }
 
 export function isHardwareWallet(wallet: IWallet): boolean {
-	return wallet.type === 'trezor' || wallet.type === 'ledger';
+	return wallet.type === "trezor" || wallet.type === "ledger";
 }
 
 export function isTrezorWallet(wallet: IWallet): boolean {
-	return wallet.type === 'trezor';
+	return wallet.type === "trezor";
 }
 
-wallets.subscribe(wallets => {
+wallets.subscribe((wallets) => {
 	wallets_cleanup(wallets);
 });
 
@@ -251,18 +315,22 @@ function wallets_cleanup(w: any) {
 	let changed = false;
 	for (let i = 0; i < w.length; i++) {
 		if (!w[i].guid) {
-			console.log('Wallet at index ' + i + ' does not have a guid, adding it');
-			w[i].guid = 'wallet-' + i + '-' + Date.now();
+			console.log("Wallet at index " + i + " does not have a guid, adding it");
+			w[i].guid = "wallet-" + i + "-" + Date.now();
 			changed = true;
 		}
 		if (!w[i].type) {
-			console.log('Wallet at index ' + i + ' does not have a type, setting it to software');
-			w[i].type = 'software';
+			console.log(
+				"Wallet at index " +
+					i +
+					" does not have a type, setting it to software",
+			);
+			w[i].type = "software";
 			changed = true;
 		}
 	}
 	if (changed) {
-		wallets.update(ws => ws);
-		console.log('Wallets cleanup: updated wallets with missing guid or type');
+		wallets.update((ws) => ws);
+		console.log("Wallets cleanup: updated wallets with missing guid or type");
 	}
 }
