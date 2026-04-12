@@ -37,7 +37,6 @@
   "@trezor/connect": "^9.7.2",
   "@trezor/connect-web": "^9.7.2",
   "ethers": "^6.16.0",
-  "node-localstorage": "^3.0.5",
   "prettier": "^3.8.2",
   "prettier-plugin-svelte": "^3.5.1"
  },
