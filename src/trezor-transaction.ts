@@ -7,19 +7,25 @@ import { provider } from "./provider";
 import { selectedNetwork } from "./network";
 import { withTrezorState, withTimeout } from "./trezor";
 import type { TransactionResponse } from "ethers";
+import {
+	assertUsableFeeParams,
+	type ITransactionFeeParams,
+} from "./fee-params";
 
 export async function sendTransactionTrezor(
 	wallet: IWallet,
 	srcAddress: IAddress,
 	dstAddress: string,
 	amount: bigint,
-	fee: bigint,
+	feeParams: ITransactionFeeParams,
 	contractAddress?: string,
 ): Promise<TransactionResponse> {
 	// Validate inputs
 	if (!wallet || !srcAddress || !dstAddress || amount <= 0n) {
 		throw new Error("Invalid transaction parameters");
 	}
+	/* Sign the fee the user confirmed, not whatever the node reports now. */
+	assertUsableFeeParams(feeParams);
 
 	// Ensure Trezor state is available
 	// ensureTrezorState should be called by UI component before this function
@@ -40,7 +46,7 @@ export async function sendTransactionTrezor(
 		console.log("From:", srcAddress.address);
 		console.log("To:", dstAddress);
 		console.log("Amount:", amount.toString());
-		console.log("Fee:", fee.toString());
+		console.log("Gas limit:", feeParams.gasLimit.toString());
 		console.log("Contract:", contractAddress || "ETH");
 
 		// Get transaction count (nonce)
@@ -50,19 +56,13 @@ export async function sendTransactionTrezor(
 		);
 		console.log("Transaction nonce:", nonce);
 
-		// Get current gas price and fee data
-		const feeData = await providerInstance.getFeeData();
-		let gasPrice = feeData.gasPrice;
-		let maxFeePerGas = feeData.maxFeePerGas;
-		let maxPriorityFeePerGas = feeData.maxPriorityFeePerGas;
-
-		// Calculate gas limit
-		let gasLimit: string;
+		/* Gas limit comes from the confirmed parameters, estimated against this very transaction.
+		 * The previous hardcoded 65000 for any token transfer was a guess that fails on contracts
+		 * doing more than a plain balance move - and the user still paid for the failed attempt. */
+		const gasLimit = "0x" + feeParams.gasLimit.toString(16);
 		let txData: string | undefined;
 
 		if (contractAddress) {
-			// Token transaction - estimate gas for contract call
-			gasLimit = "0x" + 65000n.toString(16); // Standard token transfer gas limit
 			// Encode transfer function call data
 			const tokenInterface = new Contract(contractAddress, [
 				"function transfer(address to, uint256 amount) returns (bool)",
@@ -71,9 +71,6 @@ export async function sendTransactionTrezor(
 				dstAddress,
 				amount,
 			]);
-		} else {
-			// ETH transaction
-			gasLimit = "0x" + 21000n.toString(16); // Standard ETH transfer gas limit
 		}
 
 		// Prepare transaction parameters for Trezor
@@ -90,12 +87,14 @@ export async function sendTransactionTrezor(
 			txParams.data = txData;
 		}
 
-		// Use EIP-1559 transaction if supported
-		if (maxFeePerGas && maxPriorityFeePerGas) {
-			txParams.maxFeePerGas = "0x" + maxFeePerGas.toString(16);
-			txParams.maxPriorityFeePerGas = "0x" + maxPriorityFeePerGas.toString(16);
-		} else if (gasPrice) {
-			txParams.gasPrice = "0x" + gasPrice.toString(16);
+		// Use EIP-1559 transaction if the confirmed parameters are of that shape
+		if (feeParams.maxFeePerGas !== undefined) {
+			txParams.maxFeePerGas = "0x" + feeParams.maxFeePerGas.toString(16);
+			txParams.maxPriorityFeePerGas =
+				"0x" +
+				(feeParams.maxPriorityFeePerGas ?? feeParams.maxFeePerGas).toString(16);
+		} else if (feeParams.gasPrice !== undefined) {
+			txParams.gasPrice = "0x" + feeParams.gasPrice.toString(16);
 		}
 
 		console.log("Trezor transaction parameters:", txParams);

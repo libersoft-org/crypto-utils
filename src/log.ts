@@ -31,7 +31,13 @@ export const transactionLog = localStorageSharedStore<{
  * Generate a unique transaction ID
  */
 function generateTxId(): string {
-	return Date.now().toString(36) + Math.random().toString(36).substr(2);
+	/* Collision-free identifiers from the CSPRNG rather than Math.random(). */
+	if (typeof globalThis.crypto?.randomUUID === "function") {
+		return globalThis.crypto.randomUUID();
+	}
+	const bytes = new Uint8Array(16);
+	globalThis.crypto.getRandomValues(bytes);
+	return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /**

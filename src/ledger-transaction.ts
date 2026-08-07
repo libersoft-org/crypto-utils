@@ -5,6 +5,10 @@ import { provider } from "./provider";
 import { selectedNetwork } from "./network";
 import { signEthereumTransaction } from "./ledger";
 import type { TransactionResponse } from "ethers";
+import {
+	assertUsableFeeParams,
+	type ITransactionFeeParams,
+} from "./fee-params";
 // ensureLedgerState should be called by UI component before calling sendTransactionLedger
 
 export async function sendTransactionLedger(
@@ -12,13 +16,15 @@ export async function sendTransactionLedger(
 	srcAddress: IAddress,
 	dstAddress: string,
 	amount: bigint,
-	fee: bigint,
+	feeParams: ITransactionFeeParams,
 	contractAddress?: string,
 ): Promise<TransactionResponse> {
 	// Validate inputs
 	if (!wallet || !srcAddress || !dstAddress || amount <= 0n) {
 		throw new Error("Invalid transaction parameters");
 	}
+	/* Sign the fee the user confirmed, not whatever the node reports now. */
+	assertUsableFeeParams(feeParams);
 
 	// Ensure Ledger state is available
 	// ensureLedgerState should be called by UI component before this function
@@ -38,7 +44,7 @@ export async function sendTransactionLedger(
 	console.log("From:", srcAddress.address);
 	console.log("To:", dstAddress);
 	console.log("Amount:", amount.toString());
-	console.log("Fee:", fee.toString());
+	console.log("Gas limit:", feeParams.gasLimit.toString());
 	console.log("Contract:", contractAddress || "ETH");
 
 	// Get transaction count (nonce)
@@ -48,19 +54,12 @@ export async function sendTransactionLedger(
 	);
 	console.log("Transaction nonce:", nonce);
 
-	// Get current gas price and fee data for EIP-1559 transaction
-	const feeData = await providerInstance.getFeeData();
-	let gasPrice = feeData.gasPrice;
-	let maxFeePerGas = feeData.maxFeePerGas;
-	let maxPriorityFeePerGas = feeData.maxPriorityFeePerGas;
-
-	// Calculate gas limit
-	let gasLimit: string;
+	/* Gas limit comes from the confirmed parameters, estimated against this very transaction.
+	 * The previous hardcoded 65000 for any token transfer was a guess that fails on contracts doing
+	 * more than a plain balance move - and the user still paid for the failed attempt. */
 	let txData: string | undefined;
 
 	if (contractAddress) {
-		// Token transaction - estimate gas for contract call
-		gasLimit = "0x" + 65000n.toString(16); // Standard token transfer gas limit
 		// Encode transfer function call data
 		const tokenInterface = new Contract(contractAddress, [
 			"function transfer(address to, uint256 amount) returns (bool)",
@@ -69,54 +68,32 @@ export async function sendTransactionLedger(
 			dstAddress,
 			amount,
 		]);
-	} else {
-		// ETH transaction
-		gasLimit = "0x" + 21000n.toString(16); // Standard ETH transfer gas limit
 	}
 
 	// Prepare transaction parameters for Ledger
 	const txParams: any = {
 		to: contractAddress || dstAddress,
 		value: contractAddress ? 0n : amount, // Use bigint directly
-		gasLimit: BigInt(gasLimit), // Convert to bigint
+		gasLimit: feeParams.gasLimit,
 		nonce: nonce,
 		chainId: network.chainID,
 		data: txData || "0x",
 	};
 
-	// Use EIP-1559 transaction (type 2) when available, fallback to legacy
-	if (maxFeePerGas && maxPriorityFeePerGas) {
+	/* Exactly the confirmed pricing - no re-reading of getFeeData(), and no "reasonable default"
+	 * that the user never saw. */
+	if (feeParams.maxFeePerGas !== undefined) {
 		// EIP-1559 transaction (type 2) - modern gas pricing
 		txParams.type = 2;
-		txParams.maxFeePerGas = maxFeePerGas;
-		txParams.maxPriorityFeePerGas = maxPriorityFeePerGas;
-
-		console.log(
-			"Using EIP-1559 transaction with maxFeePerGas:",
-			maxFeePerGas.toString(),
-			"maxPriorityFeePerGas:",
-			maxPriorityFeePerGas.toString(),
-		);
-	} else if (gasPrice) {
-		// Fallback to legacy transaction if EIP-1559 data not available
-		// Don't set type field for legacy transactions (ethers.js will handle it)
-		txParams.gasPrice = gasPrice;
-		console.log("Using legacy transaction with gasPrice:", gasPrice.toString());
+		txParams.maxFeePerGas = feeParams.maxFeePerGas;
+		txParams.maxPriorityFeePerGas =
+			feeParams.maxPriorityFeePerGas ?? feeParams.maxFeePerGas;
 	} else {
-		// If no gas data is available at all, use reasonable defaults for Polygon
-		// Polygon typically has very low gas prices
-		const defaultGasPrice = BigInt(30000000000); // 30 Gwei for Polygon
-		txParams.gasPrice = defaultGasPrice;
-		console.warn(
-			"No gas price data from provider, using default:",
-			defaultGasPrice.toString(),
-		);
+		// Legacy transaction - don't set the type field, ethers.js handles it
+		txParams.gasPrice = feeParams.gasPrice;
 	}
 
-	console.log("Ledger transaction parameters:", txParams);
 	console.log("Transaction type:", txParams.type || "legacy (no type field)");
-	console.log("Has gasPrice:", !!txParams.gasPrice);
-	console.log("Has maxFeePerGas:", !!txParams.maxFeePerGas);
 
 	// Sign transaction with Ledger
 	console.log("Signing transaction with Ledger...");

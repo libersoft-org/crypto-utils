@@ -15,6 +15,18 @@ import { sendTransactionTrezor } from "./trezor-transaction";
 import { sendTransactionLedger } from "./ledger-transaction";
 import type { TransactionResponse } from "ethers";
 import { addTransactionToLog } from "./log.ts";
+import {
+	assertUsableFeeParams,
+	feeParamsFromTotal,
+	feeParamsMaxCost,
+	withAddressLock,
+	type ITransactionFeeParams,
+} from "./fee-params";
+export {
+	feeParamsMaxCost,
+	isEip1559,
+	type ITransactionFeeParams,
+} from "./fee-params";
 
 export interface IPayment {
 	address: string;
@@ -41,6 +53,11 @@ let estimatedFee: FeeEstimate = {
 	average: "0",
 	high: "0",
 };
+/** Concrete gas parameters behind each estimated level. Null until an estimate succeeds. */
+let estimatedFeeParams: Record<
+	"low" | "average" | "high",
+	ITransactionFeeParams
+> | null = null;
 export let estimatedTransactionTimes = writable<TransactionTimeEstimate>({
 	low: "unknown",
 	average: "unknown",
@@ -69,8 +86,64 @@ export function getEtherAmount(amount: string | number): bigint | null {
 	}
 }
 
+/** What the fee estimate should be computed for. Without a real recipient and amount, a token
+ * transfer cannot be estimated correctly - a contract may charge very different gas depending on
+ * whether the recipient already holds a balance, on fee-on-transfer logic or on allowances. */
+export interface IFeeEstimateRequest {
+	contractAddress?: string | undefined;
+	/** Recipient of the transfer. Falls back to the sender, which is a valid transfer target. */
+	to?: string | undefined;
+	/** Raw amount in the token's base units (or wei for the native currency). */
+	amount?: bigint | undefined;
+}
+
+/** Gas headroom over the estimate, to absorb state changes between estimating and mining. */
+const GAS_LIMIT_HEADROOM_PERCENT = 120n;
+
+/** Estimates the gas limit for the transaction that will actually be signed. */
+export async function estimateGasLimit(
+	request: IFeeEstimateRequest,
+): Promise<bigint> {
+	const providerInstance = get(provider);
+	const selectedAddressValue = get(selectedAddress);
+	if (!providerInstance || !selectedAddressValue) {
+		throw new Error("Cannot estimate gas without a provider and an address");
+	}
+	const from = selectedAddressValue.address;
+	/* Estimating against the sender's own address is a real, always-valid transfer. It is only a
+	 * fallback for the "user has not typed a recipient yet" case - the estimate is refreshed with the
+	 * real recipient before the transaction is confirmed. */
+	const to = request.to && request.to.length > 0 ? request.to : from;
+	if (!request.contractAddress) {
+		const estimate = await providerInstance.estimateGas({
+			from,
+			to,
+			value: request.amount ?? 0n,
+		});
+		return (estimate * GAS_LIMIT_HEADROOM_PERCENT) / 100n;
+	}
+	/* Encode the very same transfer that will be signed and let the node price it. Note this needs no
+	 * wallet: eth_estimateGas is a plain RPC call against the `from` address. */
+	const tokenContract = new Contract(
+		request.contractAddress,
+		["function transfer(address to, uint256 amount) returns (bool)"],
+		providerInstance,
+	);
+	const data = tokenContract.interface.encodeFunctionData("transfer", [
+		to,
+		request.amount ?? 1n,
+	]);
+	const estimate = await providerInstance.estimateGas({
+		from,
+		to: request.contractAddress,
+		data,
+		value: 0n,
+	});
+	return (estimate * GAS_LIMIT_HEADROOM_PERCENT) / 100n;
+}
+
 export async function estimateTransactionFee(
-	contractAddress?: string,
+	request: IFeeEstimateRequest = {},
 ): Promise<{
 	low: string;
 	average: string;
@@ -79,65 +152,21 @@ export async function estimateTransactionFee(
 	const providerInstance = get(provider);
 	const selectedAddressValue = get(selectedAddress);
 	if (!providerInstance || !get(selectedNetwork) || !selectedAddressValue) {
-		console.log("estimateTransactionFee: Missing requirements");
 		return null;
 	}
-	console.log(
-		"estimateTransactionFee: Starting estimation for",
-		contractAddress ? "token" : "ETH",
-		"transaction",
-	);
 	feeLoading.set(true);
 	// Clear fee if not custom level
 	const currentFeeLevel = get(feeLevel);
 	if (currentFeeLevel !== "custom") fee.set("");
 	try {
 		const feeData = await providerInstance.getFeeData();
-		let gasLimit: bigint;
-
-		// Determine appropriate gas limit
-		if (contractAddress) {
-			// For token transactions, estimate gas limit
-			try {
-				const mn = Mnemonic.fromPhrase(get(selectedWallet)?.phrase || "");
-				const hd_wallet = HDNodeWallet.fromMnemonic(
-					mn,
-					selectedAddressValue.path,
-				).connect(providerInstance);
-				const tokenContract = new Contract(
-					contractAddress,
-					["function transfer(address to, uint256 amount) returns (bool)"],
-					hd_wallet,
-				);
-				// Use a dummy address and amount for estimation
-				const dummyAddress = "0x0000000000000000000000000000000000000001";
-				const dummyAmount = parseUnits("1", 18);
-				gasLimit = await tokenContract["transfer"]!.estimateGas(
-					dummyAddress,
-					dummyAmount,
-				);
-				console.log(
-					"estimateTransactionFee: Estimated gas limit for token:",
-					gasLimit.toString(),
-				);
-			} catch (error) {
-				console.warn(
-					"estimateTransactionFee: Could not estimate token gas, using default 65000",
-				);
-				gasLimit = 65000n; // Default for token transfers
-			}
-		} else {
-			// For ETH transactions
-			gasLimit = 21000n;
-		}
+		/* No silent fallback to a hardcoded gas limit: a token whose transfer needs more gas than the
+		 * guess would fail on chain and the user would still pay for the attempt. If the node cannot
+		 * price the transaction, the UI has to refuse it. */
+		const gasLimit = await estimateGasLimit(request);
 
 		let maxFeePerGas = feeData.maxFeePerGas;
 		let gasPrice = feeData.gasPrice;
-		let lowFee: bigint = 0n;
-		let averageFee: bigint = 0n;
-		let highFee: bigint = 0n;
-		// Use calculated gas limit
-		const effectiveGasLimit = gasLimit;
 		// Adaptive gas price multiplier based on network conditions
 		let gasPriceMultiplier = 120n; // Default 120% (reduced from previous high values)
 		// Check recent block congestion to adjust gas price
@@ -147,51 +176,59 @@ export async function estimateTransactionFee(
 				const gasUtilization = Number(
 					(latestBlock.gasUsed * 100n) / latestBlock.gasLimit,
 				);
-				console.log("Network gas utilization:", gasUtilization + "%");
 				// Adjust multiplier based on network congestion - more conservative values
-				if (gasUtilization > 95) {
-					gasPriceMultiplier = 150n; // 150% for very high congestion
-					console.log(
-						"Very high network congestion detected, using 150% gas price",
-					);
-				} else if (gasUtilization > 85) {
-					gasPriceMultiplier = 140n; // 140% for high congestion
-					console.log("High network congestion detected, using 140% gas price");
-				} else if (gasUtilization > 70) {
-					gasPriceMultiplier = 130n; // 130% for medium congestion
-					console.log(
-						"Medium network congestion detected, using 130% gas price",
-					);
-				} else {
-					console.log("Normal network congestion, using 120% gas price");
-				}
+				if (gasUtilization > 95) gasPriceMultiplier = 150n;
+				else if (gasUtilization > 85) gasPriceMultiplier = 140n;
+				else if (gasUtilization > 70) gasPriceMultiplier = 130n;
 			}
 		} catch (blockError) {
 			console.warn(
-				"Could not check network congestion, using default gas price:",
-				blockError,
+				"Could not check network congestion, using default gas price",
 			);
 		}
+
+		/* Build the concrete parameters for each level, so that whatever the user picks is exactly
+		 * what gets signed. */
+		let levels: Record<"low" | "average" | "high", ITransactionFeeParams>;
 		if (maxFeePerGas && feeData.maxPriorityFeePerGas) {
 			const baseFee = maxFeePerGas - feeData.maxPriorityFeePerGas;
-			const lowPriorityFee = (feeData.maxPriorityFeePerGas * 75n) / 100n; // Increased from 50%
-			lowFee = (baseFee + lowPriorityFee) * effectiveGasLimit;
-			averageFee =
-				((maxFeePerGas * gasPriceMultiplier) / 100n) * effectiveGasLimit; // Increased
-			const highPriorityFee = (feeData.maxPriorityFeePerGas * 200n) / 100n; // Increased from 150%
-			highFee = (baseFee + highPriorityFee) * effectiveGasLimit;
+			const lowPriority = (feeData.maxPriorityFeePerGas * 75n) / 100n;
+			const highPriority = (feeData.maxPriorityFeePerGas * 200n) / 100n;
+			const averageMaxFee = (maxFeePerGas * gasPriceMultiplier) / 100n;
+			levels = {
+				low: {
+					gasLimit,
+					maxFeePerGas: baseFee + lowPriority,
+					maxPriorityFeePerGas: lowPriority,
+				},
+				average: {
+					gasLimit,
+					maxFeePerGas: averageMaxFee,
+					maxPriorityFeePerGas: feeData.maxPriorityFeePerGas,
+				},
+				high: {
+					gasLimit,
+					maxFeePerGas: baseFee + highPriority,
+					maxPriorityFeePerGas: highPriority,
+				},
+			};
 		} else if (gasPrice) {
-			lowFee = ((gasPrice * 100n) / 100n) * effectiveGasLimit; // Increased from 80%
-			averageFee = ((gasPrice * gasPriceMultiplier) / 100n) * effectiveGasLimit; // Increased
-			highFee = ((gasPrice * 200n) / 100n) * effectiveGasLimit; // Increased from 150%
+			levels = {
+				low: { gasLimit, gasPrice },
+				average: { gasLimit, gasPrice: (gasPrice * gasPriceMultiplier) / 100n },
+				high: { gasLimit, gasPrice: (gasPrice * 200n) / 100n },
+			};
+		} else {
+			throw new Error("The network did not report any gas price");
 		}
+
+		estimatedFeeParams = levels;
 		const fees = {
-			low: formatUnits(lowFee, 18),
-			average: formatUnits(averageFee, 18),
-			high: formatUnits(highFee, 18),
+			low: formatUnits(feeParamsMaxCost(levels.low), 18),
+			average: formatUnits(feeParamsMaxCost(levels.average), 18),
+			high: formatUnits(feeParamsMaxCost(levels.high), 18),
 		};
 		estimatedFee = fees;
-		console.log("estimatedFee set to:", estimatedFee);
 		// Update transaction time based on real data (asynchronously)
 		transactionTimeLoading.set(true);
 		updateTransactionTimes()
@@ -205,14 +242,32 @@ export async function estimateTransactionFee(
 				transactionTimeLoading.set(false);
 			});
 		updateFeeFromLevel();
-		console.log("estimateTransactionFee: Completed, returning:", fees);
 		return fees;
 	} catch (e) {
 		console.error("Error estimating transaction fee:", e);
+		estimatedFeeParams = null;
 		return null;
 	} finally {
 		feeLoading.set(false);
 	}
+}
+
+/** Fee parameters for the level the user has selected, or null when none could be estimated. */
+export function getSelectedFeeParams(): ITransactionFeeParams | null {
+	if (!estimatedFeeParams) return null;
+	const level = get(feeLevel);
+	if (level === "custom") {
+		const total = getEtherAmount(get(fee));
+		if (total === null || total <= 0n) return null;
+		try {
+			/* A custom fee now really changes what is signed - previously it only changed a label. */
+			return feeParamsFromTotal(estimatedFeeParams.average, total);
+		} catch (e) {
+			console.error("Invalid custom fee:", e);
+			return null;
+		}
+	}
+	return estimatedFeeParams[level];
 }
 
 export function updateFeeFromLevel() {
@@ -504,7 +559,7 @@ function formatTransactionTime(seconds: number): string {
 export async function sendTransaction(
 	address: string,
 	etherValue: bigint,
-	etherValueFee: bigint,
+	feeParams: ITransactionFeeParams,
 	contractAddress?: string,
 	selectedCurrencySymbol?: string,
 	decimals?: number,
@@ -512,77 +567,72 @@ export async function sendTransaction(
 	const network = get(selectedNetwork);
 	const selectedWalletValue = get(selectedWallet);
 	const selectedAddressValue = get(selectedAddress);
-	console.log(
-		"sendTransaction debug - selectedWalletValue:",
-		selectedWalletValue,
-	);
-	console.log(
-		"sendTransaction debug - selectedAddressValue:",
-		selectedAddressValue,
-	);
-	console.log(
-		"sendTransaction debug - wallet type:",
-		selectedWalletValue?.type,
-	);
-	console.log(
-		"sendTransaction debug - wallet has phrase:",
-		!!selectedWalletValue?.phrase,
-	);
+	/* Never log the wallet: it carries the mnemonic. Only its type is diagnostically useful. */
+	console.log("sendTransaction: wallet type:", selectedWalletValue?.type);
 	if (!selectedWalletValue || !selectedAddressValue) {
 		console.error("No selected wallet or address");
 		return null;
 	}
+	/* The caller confirmed these exact numbers - refuse rather than quietly substitute defaults. */
+	assertUsableFeeParams(feeParams);
 
-	//console.log('selectedWalletValue.type:', selectedWalletValue.type);
-	let hash: string | null = null;
-	if (selectedWalletValue.type === "software") {
-		hash = (
-			await sendTransactionSw(
-				selectedWalletValue,
-				selectedAddressValue,
-				address,
-				etherValue,
-				etherValueFee,
-				contractAddress,
-			)
-		).hash;
-	} else if (selectedWalletValue.type === "trezor") {
-		hash = (
-			await sendTransactionTrezor(
-				selectedWalletValue,
-				selectedAddressValue,
-				address,
-				etherValue,
-				etherValueFee,
-				contractAddress,
-			)
-		).hash;
-	} else if (selectedWalletValue.type === "ledger") {
-		hash = (
-			await sendTransactionLedger(
-				selectedWalletValue,
-				selectedAddressValue,
-				address,
-				etherValue,
-				etherValueFee,
-				contractAddress,
-			)
-		).hash;
-	} else {
-		console.error("Unknown wallet type:", selectedWalletValue.type);
-		throw new Error("Invalid wallet configuration");
-	}
+	/* One transaction per sending address at a time, so two concurrent sends cannot allocate the
+	 * same nonce and silently replace each other. */
+	return await withAddressLock(
+		network?.chainID,
+		selectedAddressValue.address,
+		async (): Promise<string | null> => {
+			let hash: string | null = null;
+			if (selectedWalletValue.type === "software") {
+				hash = (
+					await sendTransactionSw(
+						selectedWalletValue,
+						selectedAddressValue,
+						address,
+						etherValue,
+						feeParams,
+						contractAddress,
+					)
+				).hash;
+			} else if (selectedWalletValue.type === "trezor") {
+				hash = (
+					await sendTransactionTrezor(
+						selectedWalletValue,
+						selectedAddressValue,
+						address,
+						etherValue,
+						feeParams,
+						contractAddress,
+					)
+				).hash;
+			} else if (selectedWalletValue.type === "ledger") {
+				hash = (
+					await sendTransactionLedger(
+						selectedWalletValue,
+						selectedAddressValue,
+						address,
+						etherValue,
+						feeParams,
+						contractAddress,
+					)
+				).hash;
+			} else {
+				console.error("Unknown wallet type:", selectedWalletValue.type);
+				throw new Error("Invalid wallet configuration");
+			}
 
-	logTransaction(
-		network,
-		address,
-		etherValue,
-		contractAddress,
-		hash,
-		selectedCurrencySymbol,
-		decimals,
+			logTransaction(
+				network,
+				address,
+				etherValue,
+				contractAddress,
+				hash,
+				selectedCurrencySymbol,
+				decimals,
+			);
+			return hash;
+		},
 	);
-	return hash;
 }
 
 export function logTransaction(
@@ -622,7 +672,7 @@ async function sendTransactionSw(
 	selectedAddressValue: any,
 	address: string,
 	etherValue: bigint,
-	_etherValueFee: bigint,
+	feeParams: ITransactionFeeParams,
 	contractAddress?: string,
 ): Promise<TransactionResponse> {
 	// Check provider connection and attempt to reconnect if needed
@@ -637,6 +687,8 @@ async function sendTransactionSw(
 		);
 	}
 
+	/* Neither `mn` nor `hd_wallet` may ever be logged: the first is the seed, the second holds the
+	 * derived private key. */
 	const mn = Mnemonic.fromPhrase(selectedWalletValue.phrase);
 	let hd_wallet = HDNodeWallet.fromMnemonic(
 		mn,
@@ -668,10 +720,43 @@ async function sendTransactionSw(
 			value: etherValue,
 		};
 	}
-	//
-	//nonce: await provider.getTransactionCount(selectedAddressValue.address),
-	console.log("selectedAddressValue.address:", selectedAddressValue);
-	console.log("provider:", providerInstance);
+
+	/* Sign exactly the fee the user confirmed. Leaving these unset let ethers fill in whatever the
+	 * node happened to report at signing time, which could be more than was shown and approved. */
+	request.gasLimit = feeParams.gasLimit;
+	if (feeParams.maxFeePerGas !== undefined) {
+		request.maxFeePerGas = feeParams.maxFeePerGas;
+		if (feeParams.maxPriorityFeePerGas !== undefined) {
+			request.maxPriorityFeePerGas = feeParams.maxPriorityFeePerGas;
+		}
+	} else if (feeParams.gasPrice !== undefined) {
+		request.gasPrice = feeParams.gasPrice;
+	}
+
+	/* The gas limit was estimated when the transaction was composed; re-check it against current
+	 * chain state. Raising it silently would exceed the approved maximum cost, so this only ever
+	 * refuses - the user has to confirm the higher fee explicitly. */
+	try {
+		const currentEstimate = await providerInstance.estimateGas({
+			from: selectedAddressValue.address,
+			to: (contractAddress ?? address) as string,
+			...(request.data !== undefined ? { data: request.data } : {}),
+			value: contractAddress ? 0n : etherValue,
+		});
+		if (currentEstimate > feeParams.gasLimit) {
+			throw new Error(
+				`This transaction now needs ${currentEstimate} gas, more than the ${feeParams.gasLimit} you confirmed. Review the fee and try again.`,
+			);
+		}
+	} catch (e) {
+		if (e instanceof Error && e.message.includes("you confirmed")) throw e;
+		/* A node that cannot estimate (reverting transfer, rate limit) is a reason to stop, not to
+		 * broadcast a transaction that will probably fail and still cost gas. */
+		throw new Error(
+			`Could not verify the gas limit for this transaction: ${e instanceof Error ? e.message : String(e)}`,
+		);
+	}
+
 	// Get and set proper nonce to avoid conflicts
 	// Use 'latest' instead of 'pending' to get confirmed nonce, then check for pending transactions
 	const confirmedNonce = await providerInstance.getTransactionCount(
@@ -683,38 +768,22 @@ async function sendTransactionSw(
 		"pending",
 	);
 
-	console.log("📊 Confirmed nonce for address:", confirmedNonce);
-	console.log("📊 Pending nonce for address:", pendingNonce);
-
 	// If there are pending transactions, we need to wait or use a higher nonce
 	if (pendingNonce > confirmedNonce) {
+		const pendingCount = pendingNonce - confirmedNonce;
 		console.warn(
-			"⚠️ There are pending transactions! Confirmed:",
-			confirmedNonce,
-			"Pending:",
-			pendingNonce,
-		);
-		console.warn(
-			"⚠️ This might cause nonce conflicts. Consider waiting for pending transactions to complete.",
+			`${pendingCount} pending transaction(s) for this address (confirmed ${confirmedNonce}, pending ${pendingNonce})`,
 		);
 
 		// Check if we should warn user about potential stuck transactions
-		const pendingCount = pendingNonce - confirmedNonce;
 		if (pendingCount > 3) {
-			console.error(
-				"🚨 Warning: " + pendingCount + " pending transactions detected!",
-			);
-			console.error(
-				"🚨 Your previous transactions might be stuck. Consider increasing gas price or waiting.",
-			);
-
 			// Ask user if they want to use emergency mode (REPLACE stuck transaction)
 			const useEmergencyMode = confirm(
-				`🚨 STUCK TRANSACTIONS DETECTED! 🚨\n\n` +
+				`STUCK TRANSACTIONS DETECTED\n\n` +
 					`You have ${pendingCount} pending transactions (nonce ${confirmedNonce}-${pendingNonce - 1}) blocking new transactions.\n\n` +
 					`EMERGENCY MODE: Replace the FIRST stuck transaction (nonce ${confirmedNonce}) with this transaction using 3x gas price?\n\n` +
-					`⚠️ This will REPLACE the stuck transaction and unblock the queue.\n` +
-					`⚠️ This will cost more but should process faster.\n\n` +
+					`This will REPLACE the stuck transaction and unblock the queue.\n` +
+					`This will cost up to three times the fee you just confirmed.\n\n` +
 					`Click OK for Emergency Replacement (3x gas price)\n` +
 					`Click Cancel to abort transaction`,
 			);
@@ -726,12 +795,11 @@ async function sendTransactionSw(
 			}
 
 			// Emergency mode: Use the FIRST stuck nonce with higher gas price
-			console.log(
-				"🚨 EMERGENCY REPLACEMENT MODE ACTIVATED - Replacing stuck transaction with 3x gas price",
-			);
 			request.nonce = confirmedNonce; // Use the FIRST stuck nonce to unblock queue
 
-			// Increase gas price for faster processing
+			/* This now actually multiplies something. Before the fee parameters were set explicitly
+			 * above, `request` carried no gas price at all at this point, so both branches were dead
+			 * code and the promised 3x replacement never happened. */
 			if (request.maxFeePerGas) {
 				request.maxFeePerGas = request.maxFeePerGas * 3n;
 				request.maxPriorityFeePerGas = request.maxPriorityFeePerGas
@@ -742,7 +810,7 @@ async function sendTransactionSw(
 			}
 
 			console.log(
-				"🚨 REPLACING stuck nonce:",
+				"Replacing stuck nonce",
 				confirmedNonce,
 				"with 3x gas price",
 			);
@@ -755,14 +823,7 @@ async function sendTransactionSw(
 		request.nonce = confirmedNonce;
 	}
 
-	console.log("📊 Using nonce:", request.nonce);
-	console.log("mn:", mn);
-	console.log("hd_wallet:", hd_wallet);
-	console.log("tx request with nonce:", request);
-	console.log("hd_wallet.estimateGas:");
-	let eg = await hd_wallet.estimateGas(request);
-	console.log("estimateGas:", eg);
-	console.log("hd_wallet.sendTransaction:");
+	console.log("Sending transaction with nonce:", request.nonce);
 	let tx = await hd_wallet.sendTransaction(request);
 	console.log("Transaction sent, hash:", tx.hash);
 	return tx;

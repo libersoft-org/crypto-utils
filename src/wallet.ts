@@ -160,17 +160,25 @@ export function generateMnemonic(): Mnemonic {
 	return Mnemonic.fromEntropy(randomBytes(32));
 }
 
+/* Identifiers come from the CSPRNG. Math.random() is neither collision-free nor unpredictable; it
+ * is not a key here, but predictable wallet identifiers are still the wrong default. */
+function newGuid(prefix: string): string {
+	const random =
+		typeof globalThis.crypto?.randomUUID === "function"
+			? globalThis.crypto.randomUUID()
+			: [...randomBytes(16)]
+					.map((b) => b.toString(16).padStart(2, "0"))
+					.join("");
+	return `${prefix}-${random}`;
+}
+
 export async function addWallet(
 	mnemonic: Mnemonic,
 	name?: string,
 ): Promise<void> {
 	let newWallet = HDNodeWallet.fromMnemonic(mnemonic);
 	let wallet: IWallet = {
-		guid:
-			"swwallet-" +
-			Date.now() +
-			"-" +
-			Math.random().toString(36).substring(2, 15),
+		guid: newGuid("swwallet"),
 		type: "software",
 		phrase: mnemonic.phrase,
 		address: newWallet.address,
@@ -280,12 +288,7 @@ export async function addHardwareWallet(
 ): Promise<IWallet> {
 	console.debug("Adding hardware wallet:", type, name, identifiers);
 	const wallet: IWallet = {
-		guid:
-			"hwwallet-" +
-			type +
-			Date.now() +
-			"-" +
-			Math.random().toString(36).substring(2, 15),
+		guid: newGuid(`hwwallet-${type}`),
 		type,
 		name,
 		selected_address_index: 0,
