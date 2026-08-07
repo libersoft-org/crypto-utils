@@ -824,9 +824,33 @@ async function sendTransactionSw(
 	}
 
 	console.log("Sending transaction with nonce:", request.nonce);
-	let tx = await hd_wallet.sendTransaction(request);
-	console.log("Transaction sent, hash:", tx.hash);
-	return tx;
+	try {
+		let tx = await hd_wallet.sendTransaction(request);
+		console.log("Transaction sent, hash:", tx.hash);
+		return tx;
+	} catch (e) {
+		/* No client-side lock can cover the same address being used from another device, so a nonce
+		 * collision reported by the node has to surface as a clear error instead of looking like a
+		 * generic RPC failure - and it must never be retried blindly with the same nonce. */
+		throw describeSendError(e);
+	}
+}
+
+/** Turns provider errors that matter to the user into something actionable. */
+function describeSendError(e: unknown): Error {
+	const message = e instanceof Error ? e.message : String(e);
+	const lower = message.toLowerCase();
+	if (lower.includes("nonce too low") || lower.includes("already known") || lower.includes("replacement transaction underpriced")) {
+		return new Error(
+			"This transaction was rejected because another transaction from the same address was sent first (nonce conflict). " +
+				"If you are using this wallet on another device or window, wait for that transaction to confirm and try again. " +
+				`Original error: ${message}`,
+		);
+	}
+	if (lower.includes("insufficient funds")) {
+		return new Error(`The balance does not cover the amount plus the confirmed fee. Original error: ${message}`);
+	}
+	return e instanceof Error ? e : new Error(message);
 }
 
 function interpolateTransactionTime(

@@ -65,18 +65,37 @@ export function feeParamsFromTotal(base: ITransactionFeeParams, totalWei: bigint
  * The nonce used to be read straight from the provider and written into the request with nothing
  * serialising the two steps, so two sends started at the same time - from two windows, two tabs or
  * a double click - could read the same pending nonce. One of them then silently replaced the other
- * while the UI reported both as sent. */
+ * while the UI reported both as sent.
+ *
+ * Two layers are used, because neither alone is enough:
+ *  - the Web Locks API, which is shared by every tab and every webview of one origin. This is what
+ *    makes two open tabs, or a Tauri main window plus a secondary webview, safe.
+ *  - an in-process promise chain, as a fallback where Web Locks is unavailable, and because a lock
+ *    held by this realm must also serialise callers inside it.
+ *
+ * What no client-side lock can cover is two *devices* using the same address. That case has to fail
+ * loudly rather than silently: see the nonce conflict handling in transaction.ts. */
 const addressLocks = new Map<string, Promise<unknown>>();
 
 function lockKey(chainId: bigint | number | undefined, address: string): string {
 	return `${chainId ?? "unknown"}:${address.toLowerCase()}`;
 }
 
-/** Runs `fn` with exclusive access to one sending address. */
+function webLocks(): LockManager | null {
+	const locks = (globalThis as any)?.navigator?.locks;
+	return locks && typeof locks.request === "function" ? locks : null;
+}
+
+/** Runs `fn` with exclusive access to one sending address, across every tab of this origin. */
 export function withAddressLock<T>(chainId: bigint | number | undefined, address: string, fn: () => Promise<T>): Promise<T> {
 	const key = lockKey(chainId, address);
+	const guarded = (): Promise<T> => {
+		const locks = webLocks();
+		if (!locks) return fn();
+		return locks.request(`yellow-wallet-nonce:${key}`, { mode: "exclusive" }, () => fn()) as Promise<T>;
+	};
 	const previous = addressLocks.get(key) ?? Promise.resolve();
-	const run = previous.then(fn, fn);
+	const run = previous.then(guarded, guarded);
 	/* Keep the chain alive regardless of outcome, but never leak the rejection. */
 	addressLocks.set(
 		key,
